@@ -21,6 +21,9 @@ import (
 	blackfriday "gopkg.in/russross/blackfriday.v2"
 
 	"k8s.io/apimachinery/pkg/labels"
+	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 )
 
 const htmlPageStart = `
@@ -237,6 +240,8 @@ func (c *Controller) userInterfaceHandler() http.Handler {
 	mux.HandleFunc("/releasestream/{release}/release/{tag}/download", c.httpReleaseInfoDownload)
 	mux.HandleFunc("/releasestream/{release}/latest", c.httpReleaseLatest)
 	mux.HandleFunc("/releasestream/{release}/latest/download", c.httpReleaseLatestDownload)
+	mux.HandleFunc("/candidate/{release}/list", c.httpReleaseCandidateList)
+	mux.HandleFunc("/candidate/{release}", c.httpReleaseCandidate)
 	mux.HandleFunc("/", c.httpReleases)
 	return mux
 }
@@ -915,3 +920,4 @@ func (c *Controller) httpReleases(w http.ResponseWriter, req *http.Request) {
 	}
 	fmt.Fprintln(w, htmlPageEnd)
 }
+
