@@ -21,8 +21,6 @@ import (
 	blackfriday "gopkg.in/russross/blackfriday.v2"
 
 	"k8s.io/apimachinery/pkg/labels"
-	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 )
 
