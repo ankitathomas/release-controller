@@ -12,9 +12,9 @@ import (
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 
 	imagev1 "github.com/openshift/api/image/v1"
-	"k8s.io/apimachinery/pkg/labels"
 )
 
 func (c *Controller) releaseDefinition(is *imagev1.ImageStream) (*Release, bool, error) {
@@ -415,7 +415,8 @@ func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, err
 			continue
 		}
 
-		if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
+		if r.Config.As == releaseConfigModeStable {
+			version, _ := semverParseTolerant(r.Source.Name)
 			stable.Releases = append(stable.Releases, StableRelease{
 				Release:  r,
 				Version:  version,
@@ -426,23 +427,3 @@ func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, err
 	sort.Sort(stable.Releases)
 	return stable, nil
 }
-
-func (c *Controller) findImageStreamByAnnotations(annotations map[string]string) (*imagev1.ImageStream, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, stream := range imageStreams {
-		if stream.Annotations == nil {
-			continue
-		}
-		for k, v := range annotations {
-			if stream.Annotations[k] != v {
-				continue
-			}
-			return stream, nil
-		}
-	}
-	return nil, fmt.Errorf("No ImageStream matching annotations")
-}
-

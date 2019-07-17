@@ -22,7 +22,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
-//	"os/exec"
 )
 
 type CachingReleaseInfo struct {
@@ -33,10 +32,12 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 	cache := groupcache.NewGroup("release", size, groupcache.GetterFunc(func(ctx groupcache.Context, key string, sink groupcache.Sink) error {
 		var s string
 		var err error
-		if parts := strings.Split(key, "\x00"); len(parts) == 2 {
-			s, err = info.ChangeLog(parts[0], parts[1])
-		} else {
-			s, err = info.GetReleaseInfo(key)
+		parts := strings.Split(key, "\x00")
+		switch(parts[0]) {
+			case "changelog":
+				s, err = info.ChangeLog(parts[1], parts[2])
+			case "releaseinfo":
+				s, err = info.ReleaseInfo(parts[1])
 		}
 		if err != nil {
 			return err
@@ -54,23 +55,23 @@ func (c *CachingReleaseInfo) ChangeLog(from, to string) (string, error) {
 		return "", fmt.Errorf("invalid from/to")
 	}
 	var s string
-	err := c.cache.Get(context.TODO(), strings.Join([]string{from, to}, "\x00"), groupcache.StringSink(&s))
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"changelog", from, to}, "\x00"), groupcache.StringSink(&s))
 	return s, err
 }
 
-func (c *CachingReleaseInfo) GetReleaseInfo(image string) (string, error) {
+func (c *CachingReleaseInfo) ReleaseInfo(image string) (string, error) {
 	if strings.Contains(image, "\x00") {
 		return "", fmt.Errorf("invalid image")
 	}
 	var s string
-	err := c.cache.Get(context.TODO(), strings.Join([]string{image}, "\x00"), groupcache.StringSink(&s))
+	err := c.cache.Get(context.TODO(), strings.Join([]string{"releaseinfo", image}, "\x00"), groupcache.StringSink(&s))
 	return s, err
 }
 
 
 type ReleaseInfo interface {
 	ChangeLog(from, to string) (string, error)
-	GetReleaseInfo(image string) (string, error)
+	ReleaseInfo(image string) (string, error)
 }
 
 type ExecReleaseInfo struct {
@@ -91,7 +92,7 @@ func NewExecReleaseInfo(client kubernetes.Interface, restConfig *rest.Config, na
 	}
 }
 
-func (r *ExecReleaseInfo) GetReleaseInfo(image string) (string, error) {
+func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 	if _, err := imagereference.Parse(image); err != nil {
 		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
 	}
@@ -122,9 +123,6 @@ func (r *ExecReleaseInfo) GetReleaseInfo(image string) (string, error) {
 		return "", fmt.Errorf("could not get release info for %s: %v", image, msg)
 	}
 	return out.String(), nil
-
-//	out, err := exec.Command(cmd[0], cmd[1:]...).Output()
-//	return string(out), err
 }
 
 func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {

@@ -278,9 +278,7 @@ const (
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
 
-	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
 	releaseAnnotationFromRelease = "release.openshift.io/from-release"
-	releaseUpgradeJob = "release-openshift-origin-installer-e2e-aws-upgrade"
 )
 
 type Duration time.Duration
