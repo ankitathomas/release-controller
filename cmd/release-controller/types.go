@@ -67,6 +67,10 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
 
+	// Test is a map of short names to verification tests that are run on all releases
+	// These tests after release is in the Accepted/Rejected phase.
+	Test map[string]ReleaseVerification `json:"tests"`
+
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
 	// rejected.
@@ -138,7 +142,22 @@ type ReleaseVerification struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+	// Retry policy enables retries of verification tests
+	Retry *RetryPolicy `json:"retry"`
 }
+
+type RetryPolicy struct {
+	RetryStrategy RetryStrategy `json:"retryStrategy"`
+	// Maximum number of retries
+	RetryCount int `json:"retryCount"`
+}
+
+type RetryStrategy string
+
+const (
+	// Run till RetryCount
+	RetryStrategyTillRetryCount RetryStrategy = "TillRetryCount"
+)
 
 // ProwJobVerification identifies the name of a prow job that will be used to
 // validate the release.
@@ -153,6 +172,8 @@ type VerificationStatus struct {
 }
 
 type VerificationStatusMap map[string]*VerificationStatus
+
+type ValidationStatusMap map[string][]*VerificationStatus
 
 func (m VerificationStatusMap) Failures() ([]string, bool) {
 	var names []string
@@ -251,6 +272,12 @@ const (
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
+<<<<<<< HEAD
+=======
+
+	releaseAnnotationFromRelease = "release.openshift.io/from-release"
+	releaseAnnotationValidate    = "release.openshift.io/validate"
+>>>>>>> 48412a4... Allowing test rerun
 )
 
 type Duration time.Duration
