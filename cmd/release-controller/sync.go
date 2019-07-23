@@ -580,7 +580,7 @@ func (c *Controller) updateUpgradeJobs(release *Release, releaseTag *imagev1.Tag
 		}
 	}
 
-	prowJobPrefix := "release-openshift-origin-installer-e2e-aws-upgrade-"
+	prowJobPrefix := "e2e-aws-upgrade-"
 	// remove older stable upgrade tests
 	for name, verifyType := range release.Config.Test {
 		if !verifyType.Upgrade {

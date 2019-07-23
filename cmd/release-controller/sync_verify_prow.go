@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"crypto/sha512"
+	"encoding/base32"
 
 	"github.com/golang/glog"
 
@@ -20,7 +22,12 @@ import (
 
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
 	jobName := verifyType.ProwJob.Name
+	// Name must be limited to 63 characters
 	prowJobName := fmt.Sprintf("%s-%s", releaseTag.Name, verifyName)
+	if len(prowJobName) > 63 {
+		prowJobName = namespaceSafeHash(prowJobName)[:20]
+	}
+
 	obj, exists, err := c.prowLister.GetByKey(fmt.Sprintf("%s/%s", c.prowNamespace, prowJobName))
 	if err != nil {
 		return nil, err
@@ -42,7 +49,6 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "ProwJobInvalid", err.Error())
 		return nil, terminalError{err}
 	}
-
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
 	mirror, _ := c.getMirror(release, releaseTag.Name)
 	var previousReleasePullSpec string
@@ -51,7 +57,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		previousTag = tags[0].Name
 		previousReleasePullSpec = release.Target.Status.PublicDockerImageRepository + ":" + previousTag
 	}
-	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec)
+	ok, err = addReleaseEnvToProwJobSpec(spec, release, mirror, releaseTag, previousReleasePullSpec, verifyName)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +75,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 					"prow.k8s.io/job": spec.Job,
 				},
 				Labels: map[string]string{
-					"release.openshift.io/verify": "true",
+					releaseAnnotationVerify: "true",
 
 					"prow.k8s.io/type": string(spec.Type),
 					"prow.k8s.io/job":  spec.Job,
@@ -95,7 +101,7 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 				"prow.k8s.io/job": spec.Job,
 			},
 			Labels: map[string]string{
-				"release.openshift.io/verify": "true",
+				releaseAnnotationVerify: "true",
 
 				"prow.k8s.io/type": string(spec.Type),
 				"prow.k8s.io/job":  spec.Job,
@@ -146,7 +152,7 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 	return u
 }
 
-func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec string) (bool, error) {
+func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec, jobName string) (bool, error) {
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
@@ -162,6 +168,10 @@ func addReleaseEnvToProwJobSpec(spec *prowapiv1.ProwJobSpec, release *Release, m
 					return false, nil
 				}
 				c.Env[j].Value = previousReleasePullSpec
+			case name == "NAMESPACE":
+				c.Env[j].Value = fmt.Sprintf("ci-ln-%s", namespaceSafeHash(jobName)[:10])
+			case name == "CLUSTER_DURATION":
+				c.Env[j].Value = "7200" //seconds, 2 hours
 			case name == "IMAGE_FORMAT":
 				if mirror == nil {
 					return false, fmt.Errorf("unable to determine IMAGE_FORMAT for prow job %s", spec.Job)
@@ -212,4 +222,23 @@ func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *pro
 	spec.DecorationConfig.SkipCloning = &isTrue
 
 	return spec
+}
+
+// oneWayEncoding can be used to encode hex to a 62-character set (0 and 1 are duplicates) for use in
+// short display names that are safe for use in kubernetes as resource names.
+var oneWayNameEncoding = base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding)
+
+func namespaceSafeHash(values ...string) string {
+        hash := sha512.New()
+
+        // the inputs form a part of the hash
+        for _, s := range values {
+            hash.Write([]byte(s))
+        }
+
+        // Object names can't be too long so we truncate
+        // the hash. This increases chances of collision
+        // but we can tolerate it as our input space is
+        // tiny.
+        return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:])
 }
