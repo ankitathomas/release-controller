@@ -80,7 +80,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		return verifyStatus, err
 	}
 
-	for name, additionalTest := range release.Config.AdditionalTest {
+	for name, additionalTest := range release.Config.AdditionalTests {
 		additionalTests[name] = additionalTest
 	}
 
@@ -204,16 +204,14 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 			prowJobName := fmt.Sprintf("%s%d.%d", prowJobPrefix, stableVersion.Major, stableVersion.Minor)
 			testName := fmt.Sprintf("%s.%d", prowJobName, stableVersion.Patch)
 			upgradeTests[testName] = ReleaseAdditionalTest{
-				ReleaseVerification: ReleaseVerification {
-					Disabled:   false,
-					Optional:   true,
-					Upgrade:    true,
-					ProwJob:    &ProwJobVerification{Name: prowJobName},
+				ReleaseVerification: ReleaseVerification{
+					Disabled: false,
+					Optional: true,
+					Upgrade:  true,
+					ProwJob:  &ProwJobVerification{Name: prowJobName},
 				},
-				Params: map[string]string{
-					releaseAnnotationFromRelease: fromImageStream.Status.PublicDockerImageRepository,
-					releaseAnnotationFromTag: stableTag.Name,
-				},
+				UpgradeTag: stableTag.Name,
+				UpgradeRef: fromImageStream.Status.PublicDockerImageRepository,
 				Retry: &RetryPolicy{
 					RetryStrategy: RetryStrategyTillRetryCount,
 					RetryCount:    retryCount,

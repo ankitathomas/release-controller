@@ -67,9 +67,9 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
 
-	// AdditionalTest is a map of short names to additional tests that are run on all releases
+	// AdditionalTests is a map of short names to additional tests that are run on all releases
 	// These tests after release is in the Accepted/Rejected phase.
-	AdditionalTest map[string]ReleaseAdditionalTest `json:"additionalTests"`
+	AdditionalTests map[string]ReleaseAdditionalTest `json:"additionalTests"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -146,8 +146,14 @@ type ReleaseVerification struct {
 
 type ReleaseAdditionalTest struct {
 	ReleaseVerification
-	// parameters the test may need
-	Params map[string]string `json:"params"`
+	// UpgradeTag is the tag that upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeTag string `json:"upgradeTag"`
+	// UpgradeRef is the ref that the upgrade should be run from.
+	// If empty, upgrade will run from previous accepted ImageStreamTag.
+	// Ignored if Upgrade is not true
+	UpgradeRef string `json:"upgradeRef"`
 	// Retry policy enables retries of verification tests
 	Retry *RetryPolicy `json:"retry"`
 }
@@ -278,12 +284,9 @@ const (
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
-<<<<<<< HEAD
-=======
 
 	releaseAnnotationFromRelease = "release.openshift.io/from-release"
 	releaseAnnotationValidate    = "release.openshift.io/validate"
->>>>>>> 48412a4... Allowing test rerun
 )
 
 type Duration time.Duration

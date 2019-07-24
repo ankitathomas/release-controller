@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
-	"fmt"
-	"strings"
 	"crypto/sha512"
 	"encoding/base32"
+	"fmt"
+	"strings"
 
 	"github.com/golang/glog"
 
@@ -67,9 +67,9 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 		return objectToUnstructured(&prowapiv1.ProwJob{
 			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: prowJobName,
+				Name:        prowJobName,
 				Annotations: annotations,
-				Labels: labels,
+				Labels:      labels,
 			},
 			Spec: *spec,
 			Status: prowapiv1.ProwJobStatus{
@@ -84,9 +84,9 @@ func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName str
 	pj := &prowapiv1.ProwJob{
 		TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: prowJobName,
+			Name:        prowJobName,
 			Annotations: annotations,
-			Labels: labels,
+			Labels:      labels,
 		},
 		Spec: *spec,
 		Status: prowapiv1.ProwJobStatus{
@@ -136,7 +136,13 @@ func (c *Controller) ensureProwJobForAdditionalTest(release *Release, testName s
 	}
 	spec := prowSpecForPeriodicConfig(periodicConfig, config.Plank.DefaultDecorationConfig)
 
-	env, annotations, labels, err := c.buildKVMapsForProwJob(spec, release, releaseTag, testType.Params, testName)
+	params := make(map[string]string)
+	if testType.Upgrade {
+		params[releaseAnnotationFromRelease] = testType.UpgradeRef
+		params[releaseAnnotationFromTag] = testType.UpgradeTag
+	}
+
+	env, annotations, labels, err := c.buildKVMapsForProwJob(spec, release, releaseTag, params, testName)
 	if err != nil {
 		return nil, err
 	}
@@ -152,9 +158,9 @@ func (c *Controller) ensureProwJobForAdditionalTest(release *Release, testName s
 		return objectToUnstructured(&prowapiv1.ProwJob{
 			TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: prowJobName,
+				Name:        prowJobName,
 				Annotations: annotations,
-				Labels: labels,
+				Labels:      labels,
 			},
 			Spec: *spec,
 			Status: prowapiv1.ProwJobStatus{
@@ -169,9 +175,9 @@ func (c *Controller) ensureProwJobForAdditionalTest(release *Release, testName s
 	pj := &prowapiv1.ProwJob{
 		TypeMeta: metav1.TypeMeta{APIVersion: "prow.k8s.io/v1", Kind: "ProwJob"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: prowJobName,
+			Name:        prowJobName,
 			Annotations: annotations,
-			Labels: labels,
+			Labels:      labels,
 		},
 		Spec: *spec,
 		Status: prowapiv1.ProwJobStatus{
@@ -356,16 +362,16 @@ func prowSpecForPeriodicConfig(config *prowapiv1.Periodic, decorationConfig *pro
 var oneWayNameEncoding = base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding)
 
 func namespaceSafeHash(values ...string) string {
-        hash := sha512.New()
+	hash := sha512.New()
 
-        // the inputs form a part of the hash
-        for _, s := range values {
-            hash.Write([]byte(s))
-        }
+	// the inputs form a part of the hash
+	for _, s := range values {
+		hash.Write([]byte(s))
+	}
 
-        // Object names can't be too long so we truncate
-        // the hash. This increases chances of collision
-        // but we can tolerate it as our input space is
-        // tiny.
-        return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:])
+	// Object names can't be too long so we truncate
+	// the hash. This increases chances of collision
+	// but we can tolerate it as our input space is
+	// tiny.
+	return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:])
 }
