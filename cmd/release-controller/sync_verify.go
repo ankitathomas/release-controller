@@ -63,7 +63,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	return verifyStatus, nil
 }
 
-func (c *Controller) ensureValidationJobs(release *Release, releaseTag *imagev1.TagReference) (ValidationStatusMap, error) {
+func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (ValidationStatusMap, error) {
 	var verifyStatus ValidationStatusMap
 	if verifyStatus == nil {
 		if data := releaseTag.Annotations[releaseAnnotationValidate]; len(data) > 0 {
@@ -74,18 +74,28 @@ func (c *Controller) ensureValidationJobs(release *Release, releaseTag *imagev1.
 		}
 	}
 
-	for name, verifyType := range release.Config.Test {
-		if verifyType.Disabled {
-			glog.V(2).Infof("Release additional validation step %s is disabled, ignoring", name)
+	retryCount := 1
+	additionalTests, err := c.upgradeJobs(release, releaseTag, retryCount)
+	if err != nil {
+		return verifyStatus, err
+	}
+
+	for name, additionalTest := range release.Config.AdditionalTest {
+		additionalTests[name] = additionalTest
+	}
+
+	for name, testType := range additionalTests {
+		if testType.Disabled {
+			glog.V(2).Infof("Release additional test step %s is disabled, ignoring", name)
 			continue
 		}
 		switch {
-		case verifyType.ProwJob != nil:
-			switch verifyType.Retry.RetryStrategy {
+		case testType.ProwJob != nil:
+			switch testType.Retry.RetryStrategy {
 			case RetryStrategyTillRetryCount:
 				// process this, ensure minimum number of results
 			default:
-				glog.Errorf("Release %s has invalid test %s: unrecognized retry strategy %s", releaseTag.Name, name, verifyType.Retry.RetryStrategy)
+				glog.Errorf("Release %s has invalid test %s: unrecognized retry strategy %s", releaseTag.Name, name, testType.Retry.RetryStrategy)
 				continue
 			}
 			jobNo := 0
@@ -108,9 +118,9 @@ func (c *Controller) ensureValidationJobs(release *Release, releaseTag *imagev1.
 					}
 				}
 			}
-			if jobNo < verifyType.Retry.RetryCount {
+			if jobNo < testType.Retry.RetryCount {
 				jobName := fmt.Sprintf("%s-%d", name, jobNo)
-				job, err := c.ensureProwJobForReleaseTag(release, jobName, verifyType, releaseTag)
+				job, err := c.ensureProwJobForAdditionalTest(release, jobName, testType, releaseTag)
 				if err != nil {
 					return nil, err
 				}
@@ -136,4 +146,81 @@ func (c *Controller) ensureValidationJobs(release *Release, releaseTag *imagev1.
 	}
 
 	return verifyStatus, nil
+}
+
+func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagReference, retryCount int) (map[string]ReleaseAdditionalTest, error) {
+	upgradeTests := make(map[string]ReleaseAdditionalTest)
+	if releaseTag == nil || len(releaseTag.Annotations) == 0 || len(releaseTag.Annotations[releaseAnnotationKeep]) == 0 {
+		return upgradeTests, nil
+	}
+
+	releaseVersion, err := semverParseTolerant(releaseTag.Name)
+	if err != nil {
+		return upgradeTests, nil
+	}
+	upgradesFound := make(map[string]int)
+	upgrades := c.graph.UpgradesTo(releaseTag.Name)
+	for _, u := range upgrades {
+		upgradesFound[u.From]++
+	}
+
+	// Stable releases after the last rally point
+	stable, err := c.stableReleases(true)
+	if err != nil {
+		return upgradeTests, err
+	}
+	prowJobPrefix := "e2e-aws-upgrade-"
+
+	for _, r := range stable.Releases {
+		releaseSource := fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name)
+		for _, stableTag := range r.Release.Source.Spec.Tags {
+			if stableTag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted ||
+				stableTag.Annotations[releaseAnnotationSource] != releaseSource {
+				continue
+			}
+
+			if len(stableTag.Name) == 0 || upgradesFound[stableTag.Name] >= retryCount {
+				continue
+			}
+
+			stableVersion, err := semverParseTolerant(stableTag.Name)
+			if err != nil || len(stableVersion.Pre) != 0 || len(stableVersion.Build) != 0 {
+				// Only accept stable releases of the for <Major>.<Minor>.<Patch> for upgrade tests
+				continue
+			}
+			if stableVersion.Major != releaseVersion.Major || stableVersion.Minor != releaseVersion.Minor {
+				continue
+			}
+
+			fromImageStream, _ := c.findImageStreamByAnnotations(map[string]string{releaseAnnotationReleaseTag: stableTag.Name})
+			if fromImageStream == nil {
+				glog.Errorf("Unable to find image repository for %s", stableTag.Name)
+				continue
+			}
+			if len(fromImageStream.Status.PublicDockerImageRepository) == 0 {
+				continue
+			}
+
+			prowJobName := fmt.Sprintf("%s%d.%d", prowJobPrefix, stableVersion.Major, stableVersion.Minor)
+			testName := fmt.Sprintf("%s.%d", prowJobName, stableVersion.Patch)
+			upgradeTests[testName] = ReleaseAdditionalTest{
+				ReleaseVerification: ReleaseVerification {
+					Disabled:   false,
+					Optional:   true,
+					Upgrade:    true,
+					ProwJob:    &ProwJobVerification{Name: prowJobName},
+				},
+				Params: map[string]string{
+					releaseAnnotationFromRelease: fromImageStream.Status.PublicDockerImageRepository,
+					releaseAnnotationFromTag: stableTag.Name,
+				},
+				Retry: &RetryPolicy{
+					RetryStrategy: RetryStrategyTillRetryCount,
+					RetryCount:    retryCount,
+				},
+			}
+		}
+	}
+
+	return upgradeTests, nil
 }

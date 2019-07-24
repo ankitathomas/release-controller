@@ -72,9 +72,6 @@ func (c *Controller) sync(key queueKey) error {
 		}
 	}
 
-	// ensure additional validation tests, before rejected tags are removed.
-	c.syncTests(release)
-
 	// ensure old or unneeded tags are removed
 	if len(removeTags) > 0 {
 		// requeue this release image stream for safety
@@ -116,6 +113,15 @@ func (c *Controller) sync(key queueKey) error {
 			return nil
 		}
 		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToVerifyRelease", "%v", err)
+		return err
+	}
+
+	// ensure additional validation tests, before rejected tags are removed.
+	if err := c.syncAdditionalTesting(release); err != nil {
+		if errors.IsConflict(err) {
+			return nil
+		}
+		c.eventRecorder.Eventf(release.Source, corev1.EventTypeWarning, "UnableToPerformAdditionalTesting", "%v", err)
 		return err
 	}
 
@@ -477,17 +483,16 @@ func (c *Controller) syncAccepted(release *Release) error {
 	return nil
 }
 
-func (c *Controller) syncTests(release *Release) error {
+func (c *Controller) syncAdditionalTesting(release *Release) error {
 	testTags := findTagReferencesByPhase(release, releasePhaseAccepted, releasePhaseRejected)
 	if glog.V(4) && len(testTags) > 0 {
 		glog.Infof("release=%s validation=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
-		if changed, _ := c.updateUpgradeJobs(release, tag); changed {
-			_, err := c.ensureValidationJobs(release, tag)
-			if err != nil {
-				glog.V(4).Infof("Unable to run validation jobs for %s: %v", tag.Name, err)
-			}
+		_, err := c.ensureAdditionalTests(release, tag)
+		if err != nil {
+			glog.V(4).Infof("Unable to run validation jobs for %s: %v", tag.Name, err)
+			return err
 		}
 	}
 	return nil
@@ -544,101 +549,4 @@ func findSpecTag(tags []imagev1.TagReference, name string) *imagev1.TagReference
 		return &tags[i]
 	}
 	return nil
-}
-
-func (c *Controller) updateUpgradeJobs(release *Release, releaseTag *imagev1.TagReference) (bool, error) {
-	if releaseTag == nil || len(releaseTag.Annotations) == 0 || len(releaseTag.Annotations[releaseAnnotationKeep]) == 0 {
-		return false, nil
-	}
-
-	releaseSemVer, err := semverParseTolerant(releaseTag.Name)
-	if err != nil {
-		return false, nil
-	}
-	upgradesFound := make(map[string]int)
-	upgrades := c.graph.UpgradesTo(releaseTag.Name)
-	for _, u := range upgrades {
-		upgradesFound[u.From]++
-	}
-
-	// Stable releases after the last rally point
-	stable, err := c.stableReleases(true)
-	if err != nil {
-		return false, err
-	}
-	stableReleases := make(map[string]*imagev1.TagReference)
-	for _, r := range stable.Releases {
-		for _, tag := range r.Release.Source.Spec.Tags {
-			if tag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted ||
-				tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
-				continue
-			}
-			if v, err := semverParseTolerant(tag.Name); err == nil && len(v.Pre) == 0 && len(v.Build) == 0 {
-				// Only accept stable releases of the for <Major>.<Minor>.<Patch> for upgrade tests
-				stableReleases[tag.Name] = &tag
-			}
-		}
-	}
-
-	prowJobPrefix := "e2e-aws-upgrade-"
-	// remove older stable upgrade tests
-	for name, verifyType := range release.Config.Test {
-		if !verifyType.Upgrade {
-			continue
-		}
-		if len(verifyType.UpgradeTag) == 0 || len(verifyType.UpgradeRef) == 0 {
-			continue
-		}
-		if !strings.HasPrefix(verifyType.ProwJob.Name, prowJobPrefix) {
-			continue
-		}
-		delete(release.Config.Test, name)
-	}
-
-	changed := false
-	retryCount := 1
-	for stableVersion, stableTag := range stableReleases {
-		if stableTag.From == nil {
-			fromImageStream, _ := c.findImageStreamByAnnotations(map[string]string{releaseAnnotationReleaseTag: stableVersion})
-			if fromImageStream == nil {
-				stableReleases[stableVersion].From = &corev1.ObjectReference{Name: ""}
-				glog.Errorf("Unable to find image repository for %s", stableVersion)
-				continue
-			}
-			stableReleases[stableVersion].From = &corev1.ObjectReference{Name: fromImageStream.Status.PublicDockerImageRepository}
-		}
-		if len(stableTag.From.Name) == 0 || len(stableVersion) == 0 {
-			continue
-		}
-		stableSemVer, err := semverParseTolerant(stableVersion)
-		if err != nil {
-			glog.Errorf("Unable to determine version for %s", stableVersion)
-			continue
-		}
-		if stableSemVer.Major != releaseSemVer.Major || stableSemVer.Minor != releaseSemVer.Minor {
-			continue
-		}
-		if upgradesFound[stableVersion] >= retryCount {
-			continue
-		}
-		prowJobName := fmt.Sprintf("%s%d.%d", prowJobPrefix, stableSemVer.Major, stableSemVer.Minor)
-		testName := fmt.Sprintf("%s.%d", prowJobName, stableSemVer.Patch)
-		if release.Config.Test == nil {
-			release.Config.Test = make(map[string]ReleaseVerification)
-		}
-		release.Config.Test[testName] = ReleaseVerification{
-			Disabled:   false,
-			Optional:   true,
-			Upgrade:    true,
-			UpgradeRef: stableTag.From.Name,
-			UpgradeTag: stableVersion,
-			ProwJob:    &ProwJobVerification{Name: prowJobName},
-			Retry: &RetryPolicy{
-				RetryStrategy: RetryStrategyTillRetryCount,
-				RetryCount:    retryCount,
-			},
-		}
-		changed = true
-	}
-	return changed, nil
 }

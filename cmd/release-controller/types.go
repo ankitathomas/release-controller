@@ -67,9 +67,9 @@ type ReleaseConfig struct {
 	// should be expired and removed. If unset, tags are not expired.
 	Expires Duration `json:"expires"`
 
-	// Test is a map of short names to verification tests that are run on all releases
+	// AdditionalTest is a map of short names to additional tests that are run on all releases
 	// These tests after release is in the Accepted/Rejected phase.
-	Test map[string]ReleaseVerification `json:"tests"`
+	AdditionalTest map[string]ReleaseAdditionalTest `json:"additionalTests"`
 
 	// Verify is a map of short names to verification steps that must succeed before the
 	// release is Accepted. Failures for some job types will cause the release to be
@@ -142,6 +142,12 @@ type ReleaseVerification struct {
 	// release is accepted. The job is run only one time and if it fails the release
 	// is rejected.
 	ProwJob *ProwJobVerification `json:"prowJob"`
+}
+
+type ReleaseAdditionalTest struct {
+	ReleaseVerification
+	// parameters the test may need
+	Params map[string]string `json:"params"`
 	// Retry policy enables retries of verification tests
 	Retry *RetryPolicy `json:"retry"`
 }
