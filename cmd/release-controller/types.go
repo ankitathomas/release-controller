@@ -219,6 +219,33 @@ func allOptional(all map[string]ReleaseVerification, names ...string) bool {
 	return true
 }
 
+func (m ValidationStatusMap) Incomplete(required map[string]ReleaseAdditionalTest) ([]string, bool) {
+	var names []string
+	for name, definition := range required {
+		if definition.Disabled {
+			continue
+		}
+		if _, ok := m[name]; !ok {
+			names = append(names, name)
+			continue
+		}
+		completed := 0
+		for _, s := range m[name] {
+			if stringSliceContains([]string{releaseVerificationStateSucceeded, releaseVerificationStateFailed}, s.State) {
+				completed++
+			}
+		}
+		if definition.Retry == nil && completed == 0 {
+			names = append(names, name)
+			continue
+		}
+		if completed < definition.Retry.RetryCount {
+			names = append(names, name)
+		}
+	}
+	return names, len(names) > 0
+}
+
 const (
 	// releasePhasePending is assigned to release tags that are waiting for an update
 	// payload image to be created and pushed.
@@ -285,8 +312,8 @@ const (
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
 
-	releaseAnnotationFromRelease = "release.openshift.io/from-release"
-	releaseAnnotationValidate    = "release.openshift.io/validate"
+	releaseAnnotationFromRelease     = "release.openshift.io/from-release"
+	releaseAnnotationAdditionalTests = "release.openshift.io/additional-tests"
 )
 
 type Duration time.Duration

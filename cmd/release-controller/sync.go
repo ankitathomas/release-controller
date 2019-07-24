@@ -489,9 +489,19 @@ func (c *Controller) syncAdditionalTesting(release *Release) error {
 		glog.Infof("release=%s validation=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
-		_, err := c.ensureAdditionalTests(release, tag)
+		additionalTests, status, err := c.ensureAdditionalTests(release, tag)
 		if err != nil {
 			glog.V(4).Infof("Unable to run validation jobs for %s: %v", tag.Name, err)
+			return err
+		}
+
+		if names, ok := status.Incomplete(additionalTests); ok {
+			glog.V(4).Infof("Additional Tests for %s are still running: %s", tag.Name, strings.Join(names, ", "))
+			continue
+		}
+
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase],
+			map[string]string{releaseAnnotationAdditionalTests: toJSONString(status)}, tag.Name); err != nil {
 			return err
 		}
 	}

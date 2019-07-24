@@ -63,10 +63,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 	return verifyStatus, nil
 }
 
-func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (ValidationStatusMap, error) {
+func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, ValidationStatusMap, error) {
 	var verifyStatus ValidationStatusMap
 	if verifyStatus == nil {
-		if data := releaseTag.Annotations[releaseAnnotationValidate]; len(data) > 0 {
+		if data := releaseTag.Annotations[releaseAnnotationAdditionalTests]; len(data) > 0 {
 			verifyStatus = make(ValidationStatusMap)
 			if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
 				glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
@@ -74,10 +74,10 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 	}
 
-	retryCount := 1
+	retryCount := 3
 	additionalTests, err := c.upgradeJobs(release, releaseTag, retryCount)
 	if err != nil {
-		return verifyStatus, err
+		return nil, nil, err
 	}
 
 	for name, additionalTest := range release.Config.AdditionalTests {
@@ -118,15 +118,19 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 					}
 				}
 			}
-			if jobNo < testType.Retry.RetryCount {
+			for ; jobNo < testType.Retry.RetryCount; jobNo++ {
+				if jobNo < len(verifyStatus[name]) && (verifyStatus[name][jobNo].State == releaseVerificationStateFailed ||
+					verifyStatus[name][jobNo].State == releaseVerificationStateSucceeded) {
+					continue
+				}
 				jobName := fmt.Sprintf("%s-%d", name, jobNo)
 				job, err := c.ensureProwJobForAdditionalTest(release, jobName, testType, releaseTag)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				status, ok := prowJobVerificationStatus(job)
 				if !ok {
-					return nil, fmt.Errorf("unexpected error accessing prow job definition")
+					return nil, nil, fmt.Errorf("unexpected error accessing prow job definition")
 				}
 				if status.State == releaseVerificationStateSucceeded {
 					glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
@@ -145,7 +149,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 	}
 
-	return verifyStatus, nil
+	return additionalTests, verifyStatus, nil
 }
 
 func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagReference, retryCount int) (map[string]ReleaseAdditionalTest, error) {
