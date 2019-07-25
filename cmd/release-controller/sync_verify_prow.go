@@ -138,7 +138,7 @@ func (c *Controller) ensureProwJobForAdditionalTest(release *Release, testName s
 
 	params := make(map[string]string)
 	if testType.Upgrade {
-		params[releaseAnnotationFromRelease] = testType.UpgradeRef
+		params["RELEASE_IMAGE_INITIAL"] = testType.UpgradeRef
 		params[releaseAnnotationFromTag] = testType.UpgradeTag
 	}
 
@@ -264,7 +264,7 @@ func (c *Controller) buildKVMapsForProwJob(spec *prowapiv1.ProwJobSpec, release 
 		env["RELEASE_IMAGE_LATEST"] = release.Target.Status.PublicDockerImageRepository + ":" + releaseTag.Name
 	}
 
-	if previousReleasePullSpec, ok := params[releaseAnnotationFromRelease]; ok {
+	if previousReleasePullSpec, ok := params["RELEASE_IMAGE_INITIAL"]; ok {
 		env["RELEASE_IMAGE_INITIAL"] = previousReleasePullSpec
 	}
 	if previousReleaseFromTag, ok := params[releaseAnnotationFromTag]; ok {

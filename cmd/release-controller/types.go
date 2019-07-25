@@ -312,7 +312,6 @@ const (
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
 
-	releaseAnnotationFromRelease     = "release.openshift.io/from-release"
 	releaseAnnotationAdditionalTests = "release.openshift.io/additional-tests"
 )
 

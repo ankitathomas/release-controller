@@ -12,6 +12,7 @@ import (
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -334,4 +335,51 @@ func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.Tag
 	}
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
+}
+
+// TODO: Add support for returning stable releases after rally point
+func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	stable := &StableReferences{}
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+
+		if r.Config.As == releaseConfigModeStable {
+			version, _ := semverParseTolerant(r.Source.Name)
+			stable.Releases = append(stable.Releases, StableRelease{
+				Release: r,
+				Version: version,
+			})
+		}
+	}
+
+	sort.Sort(stable.Releases)
+	return stable, nil
+}
+
+func (c *Controller) findImageStreamByAnnotations(annotations map[string]string) (*imagev1.ImageStream, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, stream := range imageStreams {
+		if stream.Annotations == nil {
+			continue
+		}
+		for k, v := range annotations {
+			if stream.Annotations[k] != v {
+				continue
+			}
+			return stream, nil
+		}
+	}
+	return nil, fmt.Errorf("no imagestream matching annotations %v", annotations)
 }
