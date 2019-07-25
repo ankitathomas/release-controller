@@ -12,7 +12,6 @@ import (
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 
 	imagev1 "github.com/openshift/api/image/v1"
 )
@@ -335,95 +334,4 @@ func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.Tag
 	}
 	sort.Sort(tagReferencesByAge(tags))
 	return tags
-}
-
-func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) (map[string]*ReleaseStreamTag, bool) {
-	needed := make(map[string]*ReleaseStreamTag)
-	for _, name := range names {
-		if len(name) == 0 {
-			continue
-		}
-		needed[name] = nil
-	}
-	remaining := len(needed)
-
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
-	if err != nil {
-		return nil, false
-	}
-
-	var stable *StableReferences
-	if includeStableTags {
-		stable = &StableReferences{}
-	}
-
-	for _, stream := range imageStreams {
-		r, ok, err := c.releaseDefinition(stream)
-		if err != nil || !ok {
-			continue
-		}
-
-		if includeStableTags {
-			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
-				stable.Releases = append(stable.Releases, StableRelease{
-					Release: r,
-					Version: version,
-				})
-			}
-		}
-		if includeStableTags && remaining == 0 {
-			continue
-		}
-
-		matched := false
-		for _, name := range names {
-			if r.Config.Name == name {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		needed[r.Config.Name] = &ReleaseStreamTag{
-			Release: r,
-			Stable:  stable,
-		}
-		remaining--
-		if !includeStableTags && remaining == 0 {
-			return needed, true
-		}
-	}
-	if includeStableTags {
-		sort.Sort(stable.Releases)
-	}
-	return needed, remaining == 0
-}
-
-// TODO: Add support for returning stable releases after rally point
-func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
-	stable := &StableReferences{}
-
-	for _, stream := range imageStreams {
-		r, ok, err := c.releaseDefinition(stream)
-		if err != nil || !ok {
-			continue
-		}
-
-		if r.Config.As == releaseConfigModeStable {
-			version, _ := semverParseTolerant(r.Source.Name)
-			stable.Releases = append(stable.Releases, StableRelease{
-				Release: r,
-				Version: version,
-			})
-		}
-	}
-
-	sort.Sort(stable.Releases)
-	return stable, nil
 }

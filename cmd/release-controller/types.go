@@ -154,11 +154,6 @@ type VerificationStatus struct {
 
 type VerificationStatusMap map[string]*VerificationStatus
 
-type ReleaseInfoShort struct {
-	Image      string               `json:"image"`
-	References *imagev1.ImageStream `json:"references"`
-}
-
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
 	// https://github.com/openshift/aos-cd-jobs/blob/master/jobs/build/release/Jenkinsfile#L20-L81
@@ -166,7 +161,7 @@ type ReleasePromoteJobParameters struct {
 	FromTag string `json:"fromTag"`
 	// Name of new release to be created by the promote job
 	Name string `json:"name"`
-	// Optional: Tag(s) (comma separated) of release this can upgrade from
+	// Optional: versions this can upgrade from
 	UpgradeFrom []string `json:"upgradeFrom,omitempty"`
 }
 
@@ -277,7 +272,8 @@ const (
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
-
+	// releaseAnnotationFromRelease is the ref to the version that
+	// a release was promoted from.
 	releaseAnnotationFromRelease = "release.openshift.io/from-release"
 )
 

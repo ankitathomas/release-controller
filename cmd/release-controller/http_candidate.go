@@ -13,6 +13,10 @@ import (
 	"github.com/blang/semver"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
+
+	"k8s.io/apimachinery/pkg/labels"
+
+	imagev1 "github.com/openshift/api/image/v1"
 )
 
 const candidatePageHtml = `
@@ -136,48 +140,58 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 	}
 }
 
-func (c *Controller) httpReleaseCandidate(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
-	var successPercent float64
 	defer func() { glog.V(4).Infof("rendered in %s", time.Now().Sub(start)) }()
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	releaseCandidateList, err := c.findReleaseCandidates(releaseStreamName)
 	if err != nil {
+		if err == errStreamNotFound {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if releaseCandidateList[releaseStreamName] == nil {
+		http.Error(w, errStreamNotFound.Error(), http.StatusNotFound)
 		return
 	}
 
 	switch req.URL.Query().Get("format") {
 	default:
-		var candidate *ReleaseCandidate
-		if releaseCandidateList[releaseStreamName] != nil && len(releaseCandidateList[releaseStreamName].Items) > 0 {
-			candidate = releaseCandidateList[releaseStreamName].Items[0]
+		var candidate *ReleasePromoteJobParameters
+		if len(releaseCandidateList[releaseStreamName].Items) != 0 {
+			releaseCandidate := releaseCandidateList[releaseStreamName].Items[0]
 			upgradeSuccess := make([]string, 0)
-			upgrades := c.graph.UpgradesTo(candidate.FromTag)
+			upgrades := c.graph.UpgradesTo(releaseCandidate.FromTag)
+			successPercent := 80.0
 			for _, u := range upgrades {
-				if u.Total > 0 {
-					if float64(100*u.Success)/float64(u.Total) > successPercent {
-						upgradeSuccess = append(upgradeSuccess, u.From)
-					}
+				if u.Total == 0 {
+					continue
+				}
+				if float64(100*u.Success)/float64(u.Total) > successPercent {
+					upgradeSuccess = append(upgradeSuccess, u.From)
 				}
 			}
 			sort.Strings(upgradeSuccess)
-			candidate.UpgradeFrom = upgradeSuccess
+			releaseCandidate.UpgradeFrom = upgradeSuccess
+			candidate = &(releaseCandidate.ReleasePromoteJobParameters)
 		}
-		data, err := json.MarshalIndent(candidate.ReleasePromoteJobParameters, "", "  ")
+		data, err := json.MarshalIndent(map[string]*ReleasePromoteJobParameters{"candidate": candidate}, "", "  ")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		fmt.Fprintf(w, string(data))
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(data)
+		fmt.Fprintln(w)
 	}
 }
 
 // z-stream and timestamp
 var rePreviousReleaseName = regexp.MustCompile("(?P<STREAM>.*)-(?P<TIMESTAMP>[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})")
-
-const releaseTimestampFormat = "2006-01-02-150405"
 
 func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
 	releaseCandidates := make(map[string]*ReleaseCandidateList)
@@ -187,20 +201,22 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 
 	releaseStreamTagMap, ok := c.findReleaseByName(true, releaseStreams...)
 	if !ok || len(releaseStreamTagMap) == 0 {
-		return releaseCandidates, fmt.Errorf("unable to find all release streams: %s", strings.Join(releaseStreams, ","))
+		return releaseCandidates, errStreamNotFound
 	}
 
 	// next release version name for each release stream
 	next := make(map[string]*semver.Version)
 	// creation time of nightly/image that latest stable release in release stream was promoted from
 	latestPromotedTime := make(map[string]int64)
+
 	type stableRef struct {
 		from string
 		name string
 		time int64
 	}
 	stableReleases := make([]stableRef, 0)
-	stable, err := c.stableReleases(false)
+
+	stable, err := c.stableReleases()
 	if err != nil {
 		return releaseCandidates, err
 	}
@@ -211,7 +227,12 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 			}
 			if _, err := semverParseTolerant(tag.Name); err == nil {
 				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
-				stableReleases = append(stableReleases, stableRef{from: tag.From.Name, name: tag.Name, time: t.Unix()})
+				stableReleases = append(stableReleases,
+					stableRef{
+						from: tag.From.Name,
+						name: tag.Name,
+						time: t.Unix(),
+					})
 			}
 		}
 	}
@@ -243,33 +264,41 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 		// Call oc adm release info to get previous nightly info for the stable release
 		op, err := c.releaseInfo.ReleaseInfo(r.from)
 		if err != nil {
-			glog.Errorf("Could not get release info for tag %s: %v", r.from, err)
-			continue
+			// releaseinfo not found, old tag
+			return releaseCandidates, fmt.Errorf("Could not get release info for tag %s: %v", r.from, err)
 		}
-		releaseInfo := ReleaseInfoShort{}
+
+		type releaseInfoShort struct {
+			Image      string               `json:"image"`
+			References *imagev1.ImageStream `json:"references"`
+		}
+
+		releaseInfo := releaseInfoShort{}
 		if err := json.Unmarshal([]byte(op), &releaseInfo); err != nil {
-			glog.Errorf("Could not unmarshal release info for tag %s: %v", r.from, err)
-			continue
+			return releaseCandidates, fmt.Errorf("Could not unmarshal release info for tag %s: %v", r.from, err)
 		}
 		latestPromotedFrom := releaseInfo.References.Annotations[releaseAnnotationFromRelease]
+		// latestPromotedFrom has the format <registry>:<previous nightly> or <previous nightly>
+		// e.g: registry.svc.ci.openshift.org/ocp/release:4.1.0-0.nightly-2019-07-18-192922
+		// Removing prefix
 		if idx := strings.LastIndex(latestPromotedFrom, ":"); idx != -1 {
 			latestPromotedFrom = latestPromotedFrom[idx+1:]
 		}
 
 		// Find the creation time and the stream for the nightly this stable release was promoted from
-		var timeFormat, timeString, stream string
+		var timeString, stream string
 		prevTags, _ := c.findReleaseStreamTags(false, latestPromotedFrom)
 		if prevTags[latestPromotedFrom] != nil &&
 			prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
 			// Use previous release stream tags, if available
-			timeFormat = time.RFC3339
 			stream = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationName]
 			timeString = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp]
 		} else if rePreviousReleaseName.MatchString(latestPromotedFrom) {
+			//timestamps from elsewhere
 			// Try to use name format of previous nightly to find release stream and timestamp
-			timeFormat = releaseTimestampFormat
 			stream = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${STREAM}")
-			timeString = rePreviousReleaseName.ReplaceAllString(latestPromotedFrom, "${TIMESTAMP}")
+			// Use creation time of latest stable release instead
+			timeString = releaseInfo.References.CreationTimestamp.Format(time.RFC3339)
 		} else {
 			glog.Errorf("Could not find tag %s , tag may have been deleted", latestPromotedFrom)
 			continue
@@ -288,7 +317,7 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 			continue
 		}
 
-		pt, err := time.Parse(timeFormat, timeString)
+		pt, err := time.Parse(time.RFC3339, timeString)
 		if err != nil {
 			glog.Errorf("Unable to parse timestamp %s for %s: %v", timeString, latestPromotedFrom, err)
 			continue
@@ -301,12 +330,8 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 	for _, stream := range releaseStreams {
 		nextReleaseName := ""
 		if next[stream] != nil {
-			nextVersion, err := incrementSemanticVersion(*next[stream])
-			if err == nil {
-				nextReleaseName = nextVersion.String()
-			} else {
-				glog.Errorf("Unable to increment semantic version %s", next[stream].String())
-			}
+			nextVersion, _ := incrementSemanticVersion(*next[stream])
+			nextReleaseName = nextVersion.String()
 		}
 		candidates := make([]*ReleaseCandidate, 0)
 		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)
@@ -333,4 +358,95 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 		releaseCandidates[stream] = &ReleaseCandidateList{Items: candidates}
 	}
 	return releaseCandidates, nil
+}
+
+func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) (map[string]*ReleaseStreamTag, bool) {
+	needed := make(map[string]*ReleaseStreamTag)
+	for _, name := range names {
+		if len(name) == 0 {
+			continue
+		}
+		needed[name] = nil
+	}
+	remaining := len(needed)
+
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, false
+	}
+
+	var stable *StableReferences
+	if includeStableTags {
+		stable = &StableReferences{}
+	}
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+
+		if includeStableTags {
+			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
+				stable.Releases = append(stable.Releases, StableRelease{
+					Release: r,
+					Version: version,
+				})
+			}
+		}
+		if includeStableTags && remaining == 0 {
+			continue
+		}
+
+		matched := false
+		for _, name := range names {
+			if r.Config.Name == name {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		needed[r.Config.Name] = &ReleaseStreamTag{
+			Release: r,
+			Stable:  stable,
+		}
+		remaining--
+		if !includeStableTags && remaining == 0 {
+			return needed, true
+		}
+	}
+	if includeStableTags {
+		sort.Sort(stable.Releases)
+	}
+	return needed, remaining == 0
+}
+
+// TODO: Add support for returning stable releases after rally point
+func (c *Controller) stableReleases() (*StableReferences, error) {
+	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	stable := &StableReferences{}
+
+	for _, stream := range imageStreams {
+		r, ok, err := c.releaseDefinition(stream)
+		if err != nil || !ok {
+			continue
+		}
+
+		if r.Config.As == releaseConfigModeStable {
+			version, _ := semverParseTolerant(r.Source.Name)
+			stable.Releases = append(stable.Releases, StableRelease{
+				Release: r,
+				Version: version,
+			})
+		}
+	}
+
+	sort.Sort(stable.Releases)
+	return stable, nil
 }
