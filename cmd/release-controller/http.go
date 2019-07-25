@@ -21,7 +21,6 @@ import (
 	blackfriday "gopkg.in/russross/blackfriday.v2"
 
 	"k8s.io/apimachinery/pkg/labels"
-
 )
 
 const htmlPageStart = `

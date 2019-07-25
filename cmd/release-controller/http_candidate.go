@@ -104,8 +104,8 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 	releaseStreamName := vars["release"]
 	releaseCandidateList, err := c.findReleaseCandidates(releaseStreamName)
 	if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -120,7 +120,7 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 		fmt.Fprintf(w, htmlPageStart, "Release Status")
 		page := template.Must(template.New("candidatePage").Funcs(
 			template.FuncMap{
-				"nextReleaseName": func (list *ReleaseCandidateList) string {
+				"nextReleaseName": func(list *ReleaseCandidateList) string {
 					if list == nil || list.Items == nil || len(list.Items) == 0 {
 						return "next release"
 					}
@@ -144,8 +144,8 @@ func (c *Controller) httpReleaseCandidate(w http.ResponseWriter, req *http.Reque
 	releaseStreamName := vars["release"]
 	releaseCandidateList, err := c.findReleaseCandidates(releaseStreamName)
 	if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	switch req.URL.Query().Get("format") {
@@ -176,6 +176,7 @@ func (c *Controller) httpReleaseCandidate(w http.ResponseWriter, req *http.Reque
 
 // z-stream and timestamp
 var rePreviousReleaseName = regexp.MustCompile("(?P<STREAM>.*)-(?P<TIMESTAMP>[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6})")
+
 const releaseTimestampFormat = "2006-01-02-150405"
 
 func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
@@ -210,7 +211,7 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 			}
 			if _, err := semverParseTolerant(tag.Name); err == nil {
 				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
-				stableReleases = append(stableReleases, stableRef{from: tag.From.Name, name:tag.Name, time: t.Unix()})
+				stableReleases = append(stableReleases, stableRef{from: tag.From.Name, name: tag.Name, time: t.Unix()})
 			}
 		}
 	}
@@ -259,7 +260,7 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 		var timeFormat, timeString, stream string
 		prevTags, _ := c.findReleaseStreamTags(false, latestPromotedFrom)
 		if prevTags[latestPromotedFrom] != nil &&
-				prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+			prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
 			// Use previous release stream tags, if available
 			timeFormat = time.RFC3339
 			stream = prevTags[latestPromotedFrom].Tag.Annotations[releaseAnnotationName]
@@ -311,17 +312,17 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)
 		for _, tag := range releaseTags {
 			if tag.Annotations != nil && tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted &&
-					tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
+				tag.Annotations[releaseAnnotationCreationTimestamp] != "" {
 				t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])
 				ts := t.Unix()
 				if ts > latestPromotedTime[stream] {
 					candidates = append(candidates, &ReleaseCandidate{
-						ReleasePromoteJobParameters {
-							FromTag:tag.Name,
-							Name:nextReleaseName,
+						ReleasePromoteJobParameters: ReleasePromoteJobParameters{
+							FromTag: tag.Name,
+							Name:    nextReleaseName,
 						},
-						time.Unix(ts,0).Format(time.RFC3339),
-						tag,
+						CreationTime: time.Unix(ts, 0).Format(time.RFC3339),
+						Tag:          tag,
 					})
 				}
 			}
@@ -329,7 +330,7 @@ func (c *Controller) findReleaseCandidates(releaseStreams ...string) (map[string
 		sort.Slice(candidates, func(i, j int) bool {
 			return candidates[i].CreationTime > candidates[j].CreationTime
 		})
-		releaseCandidates[stream] = &ReleaseCandidateList{Items:candidates}
+		releaseCandidates[stream] = &ReleaseCandidateList{Items: candidates}
 	}
 	return releaseCandidates, nil
 }

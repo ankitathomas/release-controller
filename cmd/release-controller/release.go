@@ -366,8 +366,8 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		if includeStableTags {
 			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
-					Release:  r,
-					Version:  version,
+					Release: r,
+					Version: version,
 				})
 			}
 		}
@@ -386,8 +386,8 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 			continue
 		}
 		needed[r.Config.Name] = &ReleaseStreamTag{
-			Release:         r,
-			Stable:          stable,
+			Release: r,
+			Stable:  stable,
 		}
 		remaining--
 		if !includeStableTags && remaining == 0 {
@@ -418,8 +418,8 @@ func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, err
 		if r.Config.As == releaseConfigModeStable {
 			version, _ := semverParseTolerant(r.Source.Name)
 			stable.Releases = append(stable.Releases, StableRelease{
-				Release:  r,
-				Version:  version,
+				Release: r,
+				Version: version,
 			})
 		}
 	}

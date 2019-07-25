@@ -155,8 +155,8 @@ type VerificationStatus struct {
 type VerificationStatusMap map[string]*VerificationStatus
 
 type ReleaseInfoShort struct {
-	Image         string                              `json:"image"`
-	References *imagev1.ImageStream             `json:"references"`
+	Image      string               `json:"image"`
+	References *imagev1.ImageStream `json:"references"`
 }
 
 type ReleasePromoteJobParameters struct {
@@ -172,8 +172,8 @@ type ReleasePromoteJobParameters struct {
 
 type ReleaseCandidate struct {
 	ReleasePromoteJobParameters
-	CreationTime string `json:"creationTime,omitempty"`
-	Tag *imagev1.TagReference `json:"tag,omitempty"`
+	CreationTime string                `json:"creationTime,omitempty"`
+	Tag          *imagev1.TagReference `json:"tag,omitempty"`
 }
 
 type ReleaseCandidateList struct {

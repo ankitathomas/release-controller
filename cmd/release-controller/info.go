@@ -33,11 +33,11 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 		var s string
 		var err error
 		parts := strings.Split(key, "\x00")
-		switch(parts[0]) {
-			case "changelog":
-				s, err = info.ChangeLog(parts[1], parts[2])
-			case "releaseinfo":
-				s, err = info.ReleaseInfo(parts[1])
+		switch parts[0] {
+		case "changelog":
+			s, err = info.ChangeLog(parts[1], parts[2])
+		case "releaseinfo":
+			s, err = info.ReleaseInfo(parts[1])
 		}
 		if err != nil {
 			return err
@@ -67,7 +67,6 @@ func (c *CachingReleaseInfo) ReleaseInfo(image string) (string, error) {
 	err := c.cache.Get(context.TODO(), strings.Join([]string{"releaseinfo", image}, "\x00"), groupcache.StringSink(&s))
 	return s, err
 }
-
 
 type ReleaseInfo interface {
 	ChangeLog(from, to string) (string, error)
