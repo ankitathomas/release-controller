@@ -38,8 +38,6 @@ func NewCachingReleaseInfo(info ReleaseInfo, size int64) ReleaseInfo {
 			s, err = info.ChangeLog(parts[1], parts[2])
 		case "releaseinfo":
 			s, err = info.ReleaseInfo(parts[1])
-		default:
-			return fmt.Errorf("Unknown cache key %s", parts[0])
 		}
 		if err != nil {
 			return err

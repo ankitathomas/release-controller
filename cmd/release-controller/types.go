@@ -272,9 +272,9 @@ const (
 
 	releaseAnnotationFromTag = "release.openshift.io/from-tag"
 	releaseAnnotationToTag   = "release.openshift.io/tag"
-	// releaseAnnotationFromRelease is the ref to the version that
-	// a release was promoted from.
-	releaseAnnotationFromRelease = "release.openshift.io/from-release"
+	// releaseAnnotationFromImageStream specifies the imagestream
+	// a release was promoted from. It has the format <namespace>/<imagestream name>
+	releaseAnnotationFromImageStream = "release.openshift.io/from-image-stream"
 )
 
 type Duration time.Duration
