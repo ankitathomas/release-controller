@@ -338,7 +338,7 @@ func findTagReferencesByPhase(release *Release, phases ...string) []*imagev1.Tag
 }
 
 // TODO: Add support for returning stable releases after rally point
-func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, error) {
+func (c *Controller) stableReleases() (*StableReferences, error) {
 	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -364,6 +364,7 @@ func (c *Controller) stableReleases(fromRallyPoint bool) (*StableReferences, err
 	sort.Sort(stable.Releases)
 	return stable, nil
 }
+
 
 func (c *Controller) findImageStreamByAnnotations(annotations map[string]string) (*imagev1.ImageStream, error) {
 	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())

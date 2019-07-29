@@ -338,34 +338,6 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 	return needed, remaining == 0
 }
 
-// TODO: Add support for returning stable releases after rally point
-func (c *Controller) stableReleases() (*StableReferences, error) {
-	imageStreams, err := c.imageStreamLister.ImageStreams(c.releaseNamespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
-	stable := &StableReferences{}
-
-	for _, stream := range imageStreams {
-		r, ok, err := c.releaseDefinition(stream)
-		if err != nil || !ok {
-			continue
-		}
-
-		if r.Config.As == releaseConfigModeStable {
-			version, _ := semverParseTolerant(r.Source.Name)
-			stable.Releases = append(stable.Releases, StableRelease{
-				Release: r,
-				Version: version,
-			})
-		}
-	}
-
-	sort.Sort(stable.Releases)
-	return stable, nil
-}
-
 func (c *Controller) tagPromotedFrom(tag *imagev1.TagReference) (*imagev1.TagReference, error) {
 	// Call oc adm release info to get previous nightly info for the stable release
 	op, err := c.releaseInfo.ReleaseInfo(tag.From.Name)

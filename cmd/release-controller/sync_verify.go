@@ -169,7 +169,7 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 	}
 
 	// Stable releases after the last rally point
-	stable, err := c.stableReleases(true)
+	stable, err := c.stableReleases()
 	if err != nil {
 		return upgradeTests, err
 	}

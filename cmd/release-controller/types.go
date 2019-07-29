@@ -185,9 +185,8 @@ type VerificationStatus struct {
 
 type VerificationStatusMap map[string]*VerificationStatus
 
-<<<<<<< HEAD
 type ValidationStatusMap map[string][]*VerificationStatus
-=======
+
 type ReleasePromoteJobParameters struct {
 	// Parameters for promotion job described at
 	// https://github.com/openshift/aos-cd-jobs/blob/master/jobs/build/release/Jenkinsfile#L20-L81
@@ -208,7 +207,6 @@ type ReleaseCandidate struct {
 type ReleaseCandidateList struct {
 	Items []*ReleaseCandidate `json:"items"`
 }
->>>>>>> 5446f8b02955c824d4f0690a8dee1bed45dba7c3
 
 func (m VerificationStatusMap) Failures() ([]string, bool) {
 	var names []string
