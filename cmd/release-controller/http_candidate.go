@@ -106,7 +106,13 @@ func (c *Controller) httpReleaseCandidateList(w http.ResponseWriter, req *http.R
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
-	releaseCandidateList, err := c.findReleaseCandidates(successPercent, releaseStreamName)
+	promote := true
+	minUpgradeEdges := 2
+	if strings.ToLower(req.URL.Query().Get("promote")) == "false" {
+		promote = false
+		minUpgradeEdges = 0
+	}
+	releaseCandidateList, err := c.findReleaseCandidates(successPercent, minUpgradeEdges, promote, releaseStreamName)
 	if err != nil {
 		if err == errStreamNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -156,7 +162,13 @@ func (c *Controller) apiReleaseCandidate(w http.ResponseWriter, req *http.Reques
 	vars := mux.Vars(req)
 	releaseStreamName := vars["release"]
 	successPercent := 80.0
-	releaseCandidateList, err := c.findReleaseCandidates(successPercent, releaseStreamName)
+	promote := true
+	minUpgradeEdges := 2
+	if strings.ToLower(req.URL.Query().Get("promote")) == "false" {
+		promote = false
+		minUpgradeEdges = 0
+	}
+	releaseCandidateList, err := c.findReleaseCandidates(successPercent, minUpgradeEdges, promote, releaseStreamName)
 	if err != nil {
 		if err == errStreamNotFound {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -189,7 +201,7 @@ type releaseInfoShort struct {
 	References *imagev1.ImageStream `json:"references"`
 }
 
-func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
+func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, minUpgradeEdges int, isPromotion bool, releaseStreams ...string) (map[string]*ReleaseCandidateList, error) {
 	releaseCandidates := make(map[string]*ReleaseCandidateList)
 	if len(releaseStreams) == 0 {
 		return releaseCandidates, nil
@@ -227,12 +239,18 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		nextReleaseName := ""
 		var latestPromotedTime int64 = 0
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
-		if err != nil || nextVersion == nil {
+		if err != nil {
 			glog.Errorf("Unable to find next candidate for %s: %v", stream, err)
-			continue
+			if isPromotion {
+				continue
+			}
 		}
-		nextReleaseName = nextVersion.String()
-		latestPromotedTime = promotedTime.Unix()
+		if nextVersion != nil {
+			nextReleaseName = nextVersion.String()
+		}
+		if promotedTime != nil {
+			latestPromotedTime = promotedTime.Unix()
+		}
 
 		candidates := make([]*ReleaseCandidate, 0)
 		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)
@@ -254,7 +272,12 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 						}
 					}
 					sort.Strings(upgradeSuccess)
-
+					if !isPromotion {
+						nextReleaseName = tag.Name
+					} else if len(upgradeSuccess) < minUpgradeEdges {
+						// Do not consider a release candidate unless it has a certain number of passing upgrade edges
+						continue
+					}
 					candidates = append(candidates, &ReleaseCandidate{
 						ReleasePromoteJobParameters: ReleasePromoteJobParameters{
 							FromTag:     tag.Name,
@@ -300,7 +323,6 @@ func (c *Controller) findReleaseByName(includeStableTags bool, names ...string) 
 		if err != nil || !ok {
 			continue
 		}
-
 		if includeStableTags {
 			if version, err := semverParseTolerant(r.Config.Name); err == nil || r.Config.As == releaseConfigModeStable {
 				stable.Releases = append(stable.Releases, StableRelease{
