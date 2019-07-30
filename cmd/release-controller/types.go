@@ -169,6 +169,10 @@ type RetryStrategy string
 const (
 	// Run till RetryCount
 	RetryStrategyTillRetryCount RetryStrategy = "TillRetryCount"
+	// Run till first success, or till RetryCount limit is reached
+	RetryStrategyFirstSuccess RetryStrategy = "FirstSuccess"
+	// Run till first failure, or till RetryCount limit is reached
+	RetryStrategyFirstFailure RetryStrategy = "FirstFailure"
 )
 
 // ProwJobVerification identifies the name of a prow job that will be used to

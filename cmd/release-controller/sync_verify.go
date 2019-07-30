@@ -74,7 +74,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 	}
 
-	retryCount := 3
+	retryCount := 2
 	additionalTests, err := c.upgradeJobs(release, releaseTag, retryCount)
 	if err != nil {
 		return nil, nil, err
@@ -92,37 +92,43 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		switch {
 		case testType.ProwJob != nil:
 			switch testType.Retry.RetryStrategy {
-			case RetryStrategyTillRetryCount:
+			case RetryStrategyTillRetryCount, RetryStrategyFirstSuccess, RetryStrategyFirstFailure:
 				// process this, ensure minimum number of results
 			default:
 				glog.Errorf("Release %s has invalid test %s: unrecognized retry strategy %s", releaseTag.Name, name, testType.Retry.RetryStrategy)
 				continue
 			}
-			jobNo := 0
-			if _, ok := verifyStatus[name]; ok {
-				//number of times we have run this job
-				jobNo = len(verifyStatus[name])
-
-				// See if there are pending jobs. if yes, try to get their status.
-				for i, status := range verifyStatus[name] {
-					switch status.State {
-					case releaseVerificationStateFailed, releaseVerificationStateSucceeded:
-						// we've already processed this, continue
+			skipTest := false
+			for jobNo := 0; jobNo < testType.Retry.RetryCount; {
+				if skipTest {
+					break
+				}
+				if verifyStatus == nil {
+					verifyStatus = make(ValidationStatusMap)
+				}
+				if jobNo < len(verifyStatus[name]) {
+					switch verifyStatus[name][jobNo].State {
+					case releaseVerificationStateSucceeded:
+						if testType.Retry.RetryStrategy == RetryStrategyFirstSuccess {
+							skipTest = true
+						}
+						jobNo++
+						continue
+					case releaseVerificationStateFailed:
+						if testType.Retry.RetryStrategy == RetryStrategyFirstFailure {
+							skipTest = true
+						}
+						jobNo++
 						continue
 					case releaseVerificationStatePending:
-						// we need to process this
-						jobNo = i
-						break
+						// Process this directly
 					default:
-						glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
+						glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", verifyStatus[name][jobNo].State, name, releaseTag.Name)
+						skipTest = true
+						continue
 					}
 				}
-			}
-			for ; jobNo < testType.Retry.RetryCount; jobNo++ {
-				if jobNo < len(verifyStatus[name]) && (verifyStatus[name][jobNo].State == releaseVerificationStateFailed ||
-					verifyStatus[name][jobNo].State == releaseVerificationStateSucceeded) {
-					continue
-				}
+
 				jobName := fmt.Sprintf("%s-%d", name, jobNo)
 				job, err := c.ensureProwJobForAdditionalTest(release, jobName, testType, releaseTag)
 				if err != nil {
@@ -134,9 +140,6 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 				}
 				if status.State == releaseVerificationStateSucceeded {
 					glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
-				}
-				if verifyStatus == nil {
-					verifyStatus = make(ValidationStatusMap)
 				}
 				if len(verifyStatus[name]) <= jobNo {
 					verifyStatus[name] = append(verifyStatus[name], status)
@@ -217,7 +220,7 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 				UpgradeTag: stableTag.Name,
 				UpgradeRef: fromImageStream.Status.PublicDockerImageRepository,
 				Retry: &RetryPolicy{
-					RetryStrategy: RetryStrategyTillRetryCount,
+					RetryStrategy: RetryStrategyFirstSuccess,
 					RetryCount:    retryCount,
 				},
 			}
