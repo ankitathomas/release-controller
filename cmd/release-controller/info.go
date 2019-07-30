@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
+	"os/exec"
 )
 
 type CachingReleaseInfo struct {
@@ -96,7 +97,7 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 		return "", fmt.Errorf("%s is not an image reference: %v", image, err)
 	}
 	cmd := []string{"oc", "adm", "release", "info", "-o", "json", image}
-
+/*
 	u := r.client.CoreV1().RESTClient().Post().Resource("pods").Namespace(r.namespace).Name("git-cache-0").SubResource("exec").VersionedParams(&corev1.PodExecOptions{
 		Container: "git",
 		Stdout:    true,
@@ -122,6 +123,9 @@ func (r *ExecReleaseInfo) ReleaseInfo(image string) (string, error) {
 		return "", fmt.Errorf("could not get release info for %s: %v", image, msg)
 	}
 	return out.String(), nil
+*/
+	op, err := exec.Command(cmd[0], cmd[1:]...).Output()
+	return string(op), err
 }
 
 func (r *ExecReleaseInfo) ChangeLog(from, to string) (string, error) {

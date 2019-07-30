@@ -10,7 +10,7 @@ import (
 	"github.com/golang/glog"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+//	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,6 +18,10 @@ import (
 	imagev1 "github.com/openshift/api/image/v1"
 
 	prowapiv1 "github.com/openshift/release-controller/pkg/prow/apiv1"
+	"os/exec"
+	"os"
+	"path"
+	"encoding/json"
 )
 
 func (c *Controller) ensureProwJobForReleaseTag(release *Release, verifyName string, verifyType ReleaseVerification, releaseTag *imagev1.TagReference) (*unstructured.Unstructured, error) {
@@ -200,6 +204,47 @@ func (c *Controller) ensureProwJob(prowJobName string, pj *prowapiv1.ProwJob) (*
 	if len(prowJobName) == 0 {
 		prowJobName = pj.Name
 	}
+// Do something here. Write pj to file, convert to pod and run pod.
+	prowJobFile := fmt.Sprintf("prowjobs/%s.pj", prowJobName)
+	f, err := os.OpenFile(prowJobFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("Could not create prowJob file for %s: %v", prowJobName, err)
+	}
+	op, err := json.MarshalIndent(pj, "", " ")
+	if err != nil {
+		return nil, fmt.Errorf("Error marshalling prow job to json: %v", err)
+	}
+	f.Write(op)
+	f.Close()
+
+	hash := sha512.New()
+	hash.Write([]byte(prowJobName))
+	buildId := base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding).EncodeToString(hash.Sum(nil)[:])
+	if len(buildId) > 63 {
+        buildId = buildId[:63]
+	}
+	podJson, err := exec.Command(path.Join(os.Getenv("GOPATH"),"bin/mkpod"), "-build-id", string(buildId[:]), "-prow-job", prowJobFile).Output()
+	// run the pod in the ci-stg namespace
+
+	podFile := fmt.Sprintf("pods/%s.json", prowJobName)
+	f, err = os.OpenFile(podFile, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("Could not create prowJob file for %s: %v", prowJobName, err)
+	}
+	f.Write(podJson)
+	f.Close()
+
+	cmd := exec.Command("oc", "create", "-n", "ci-stg", "-f", podFile)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("Error creating prow job pod: %v, %v", err, string(exitError.Stderr))			
+		}
+		return nil, fmt.Errorf("Error creating prow job pod: %v", err)
+	}
+	glog.V(1).Infof(string(out))
+	return objectToUnstructured(pj), nil
+/*
 	out, err := c.prowClient.Create(objectToUnstructured(pj), metav1.CreateOptions{})
 	if errors.IsAlreadyExists(err) {
 		// find a cached version or do a live call
@@ -220,7 +265,7 @@ func (c *Controller) ensureProwJob(prowJobName string, pj *prowapiv1.ProwJob) (*
 	}
 	glog.V(2).Infof("Created new prow job %s", pj.Name)
 	return out, nil
-
+*/
 }
 
 func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {

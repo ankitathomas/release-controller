@@ -229,10 +229,15 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		nextVersion, promotedTime, err := c.nextVersionDetails(stream, stableReleases)
 		if err != nil || nextVersion == nil {
 			glog.Errorf("Unable to find next candidate for %s: %v", stream, err)
-			continue
+//			continue
+		} else {
+			if nextVersion != nil {
+				nextReleaseName = nextVersion.String()
+			}
+			if promotedTime != nil {
+				latestPromotedTime = promotedTime.Unix()
+			}
 		}
-		nextReleaseName = nextVersion.String()
-		latestPromotedTime = promotedTime.Unix()
 
 		candidates := make([]*ReleaseCandidate, 0)
 		releaseTags := tagsForRelease(releaseStreamTagMap[stream].Release)

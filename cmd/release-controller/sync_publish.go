@@ -75,6 +75,11 @@ func (c *Controller) ensureImageStreamMatchesRelease(release *Release, toNamespa
 		return nil
 	}
 
+	targetNs := c.imageStreamLister.ImageStreams(toNamespace)
+	if targetNs == nil {
+		glog.V(2).Infof("No such namespace %s being watched", toNamespace)
+		return nil
+	}
 	target, err := c.imageStreamLister.ImageStreams(toNamespace).Get(toName)
 	if errors.IsNotFound(err) {
 		// TODO: create it?
