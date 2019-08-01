@@ -282,8 +282,7 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 	for _, r := range stable.Releases {
 		releaseSource := fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name)
 		for _, stableTag := range r.Release.Source.Spec.Tags {
-			if stableTag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted ||
-				stableTag.Annotations[releaseAnnotationSource] != releaseSource {
+			if stableTag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted || stableTag.Annotations[releaseAnnotationSource] != releaseSource {
 				continue
 			}
 

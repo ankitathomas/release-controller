@@ -579,8 +579,7 @@ func (c *Controller) syncAdditionalTesting(release *Release) error {
 			continue
 		}
 
-		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase],
-			map[string]string{releaseAnnotationAdditionalTests: toJSONString(status)}, tag.Name); err != nil {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationAdditionalTests: toJSONString(status)}, tag.Name); err != nil {
 			return err
 		}
 	}
