@@ -202,7 +202,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 				continue
 			}
 			skipTest := false
-			for jobNo := 0; jobNo < testType.Retry.RetryCount; jobNo++ {
+			for jobNo := 0; jobNo < testType.Retry.RetryCount; {
 				if skipTest {
 					break
 				}
@@ -215,14 +215,16 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 						if testType.Retry.RetryStrategy == RetryStrategyFirstSuccess {
 							skipTest = true
 						}
+						jobNo++
 						continue
 					case releaseVerificationStateFailed:
 						if testType.Retry.RetryStrategy == RetryStrategyFirstFailure {
 							skipTest = true
 						}
+						jobNo++
 						continue
 					case releaseVerificationStatePending:
-						// Process this directly
+						// Process this directly.
 					default:
 						glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", verifyStatus[name][jobNo].State, name, releaseTag.Name)
 						skipTest = true
@@ -241,6 +243,9 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 				}
 				if status.State == releaseVerificationStateSucceeded {
 					glog.V(2).Infof("Prow job %s for release %s succeeded, logs at %s", name, releaseTag.Name, status.URL)
+				} else if status.State == releaseVerificationStatePending {
+					// Do not repeat test till next sync loop if already pending
+					skipTest = true
 				}
 				if len(verifyStatus[name]) <= jobNo {
 					verifyStatus[name] = append(verifyStatus[name], status)
