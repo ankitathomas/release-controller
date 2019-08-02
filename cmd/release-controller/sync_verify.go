@@ -269,7 +269,9 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 	}
 
 	totalPendingJobs := 0
+	currentStreamPendingJobs := 0
 	currentTagPendingJobs := 0
+	releaseSource := release.Source.Namespace + "/" + release.Source.Name
 	for _, job := range c.prowLister.List() {
 		pj, ok := job.(*unstructured.Unstructured)
 		if !ok {
@@ -281,16 +283,26 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 		}
 		totalPendingJobs++
 		annotations := pj.GetAnnotations()
-		if len(annotations) > 0 && annotations[releaseAnnotationToTag] == releaseTag.Name {
+		if len(annotations) <= 0 {
+			continue
+		}
+		if annotations[releaseAnnotationSource] == releaseSource {
+			currentStreamPendingJobs++
+		}
+		if annotations[releaseAnnotationToTag] == releaseTag.Name {
 			currentTagPendingJobs++
 		}
 	}
-	maxJobs := 40
+	maxJobs := 50
+	maxJobsPerStream := 20
 	maxJobsPerTag := 4
 
 	allowedJobCount := maxJobs - totalPendingJobs
 	if allowedJobCount > maxJobsPerTag-currentTagPendingJobs {
 		allowedJobCount = maxJobsPerTag - currentTagPendingJobs
+	}
+	if allowedJobCount > maxJobsPerStream-currentStreamPendingJobs {
+		allowedJobCount = maxJobsPerStream - currentStreamPendingJobs
 	}
 	if allowedJobCount < 0 {
 		allowedJobCount = 0
