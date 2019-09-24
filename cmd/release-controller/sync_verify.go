@@ -169,13 +169,10 @@ type additionalTestInstance struct {
 }
 
 func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, ValidationStatusMap, error) {
-	var verifyStatus ValidationStatusMap
-	if verifyStatus == nil {
-		if data := releaseTag.Annotations[releaseAnnotationAdditionalTests]; len(data) > 0 {
-			verifyStatus = make(ValidationStatusMap)
-			if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
-				glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
-			}
+	verifyStatus := make(ValidationStatusMap)
+	if data := releaseTag.Annotations[releaseAnnotationAdditionalTests]; len(data) > 0 {
+		if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
+			glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
 		}
 	}
 
@@ -201,7 +198,7 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 
 	for name, testType := range additionalTests {
 		if testType.Disabled {
-			glog.V(2).Infof("Release additional test step %s is disabled, ignoring", name)
+			glog.V(2).Infof("Release additional test %s is disabled, ignoring", name)
 			continue
 		}
 		switch {
@@ -217,9 +214,6 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 			for jobNo := 0; jobNo < testType.Retry.RetryCount; jobNo++ {
 				if skipTest {
 					break
-				}
-				if verifyStatus == nil {
-					verifyStatus = make(ValidationStatusMap)
 				}
 				if jobNo < len(verifyStatus[name]) {
 					switch verifyStatus[name][jobNo].State {
@@ -307,9 +301,6 @@ func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1
 	if allowedJobCount > maxJobsPerStream-currentStreamPendingJobs {
 		allowedJobCount = maxJobsPerStream - currentStreamPendingJobs
 	}
-	if allowedJobCount < 0 {
-		allowedJobCount = 0
-	}
 
 	for jobName, test := range jobsToRun {
 		if allowedJobCount <= 0 {
@@ -360,62 +351,93 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 		return upgradeTests, nil
 	}
 	upgradesFound := make(map[string]int)
-	upgrades := c.graph.UpgradesTo(releaseTag.Name)
-	for _, u := range upgrades {
+	for _, u := range c.graph.UpgradesTo(releaseTag.Name) {
 		upgradesFound[u.From]++
 	}
 
-	// Stable releases after the last rally point
 	stable, err := c.stableReleases()
 	if err != nil {
 		return upgradeTests, err
 	}
 
+	// If active stream, there will be no stable releases from that stream yet
+	stableReleases := make([]imagev1.TagReference, 0)
+	activeReleases := make([]imagev1.TagReference, 0)
 	for _, r := range stable.Releases {
 		releaseSource := fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name)
-		for _, stableTag := range r.Release.Source.Spec.Tags {
-			if stableTag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted || stableTag.Annotations[releaseAnnotationSource] != releaseSource {
+		for _, tag := range r.Release.Source.Spec.Tags {
+			if len(tag.Annotations) == 0 {
 				continue
 			}
-
-			if len(stableTag.Name) == 0 || upgradesFound[stableTag.Name] >= retryCount {
+			if tag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted {
 				continue
 			}
-
-			stableVersion, err := semverParseTolerant(stableTag.Name)
-			if err != nil || len(stableVersion.Pre) != 0 || len(stableVersion.Build) != 0 {
+			// Only consider stable versions with a parseable version
+			stableVersion, err := semverParseTolerant(tag.Name)
+			if err != nil {
+				// Only accept stable releases of the for <Major>.<Minor>.<Patch> for upgrade tests
+				continue
+			}
+			if len(stableVersion.Build) != 0 {
 				// Only accept stable releases of the for <Major>.<Minor>.<Patch> for upgrade tests
 				continue
 			}
 			if stableVersion.Major != releaseVersion.Major || stableVersion.Minor != releaseVersion.Minor {
 				continue
 			}
-
-			fromImageStream, _ := c.findImageStreamByAnnotations(map[string]string{releaseAnnotationReleaseTag: stableTag.Name})
-			if fromImageStream == nil {
-				glog.Errorf("Unable to find image repository for %s", stableTag.Name)
-				continue
+			if tag.Annotations[releaseAnnotationSource] == releaseSource {
+				stableReleases = append(stableReleases, tag)
+			} else if strings.HasSuffix(tag.Annotations[releaseAnnotationName], "nightly") {
+				// Better way to identify active releases?
+				activeReleases = append(activeReleases, tag)
 			}
-			if len(fromImageStream.Status.PublicDockerImageRepository) == 0 {
-				continue
-			}
+		}
+	}
+	// No existing stable releases: active stream.
+	if len(stableReleases) == 0 {
+		stableReleases = activeReleases
+	}
 
-			testName := fmt.Sprintf("%s-%s", prowJobName, namespaceSafeHash(releaseTag.Name, stableVersion.String())[:15])
+	sort.Slice(stableReleases, func(i, j int) bool {
+		vi, _ := semverParseTolerant(stableReleases[i].Name)
+		vj, _ := semverParseTolerant(stableReleases[j].Name)
+		return vi.GT(vj)
+	})
 
-			upgradeTests[testName] = ReleaseAdditionalTest{
-				ReleaseVerification: ReleaseVerification{
-					Disabled: false,
-					Optional: true,
-					Upgrade:  true,
-					ProwJob:  &ProwJobVerification{Name: prowJobName},
-				},
-				UpgradeTag: stableTag.Name,
-				UpgradeRef: fromImageStream.Status.PublicDockerImageRepository,
-				Retry: &RetryPolicy{
-					RetryStrategy: RetryStrategyFirstSuccess,
-					RetryCount:    retryCount,
-				},
-			}
+	if len(stableReleases) > 10 {
+		stableReleases = stableReleases[:10]
+	}
+
+	for _, stableTag := range stableReleases {
+		if len(stableTag.Name) == 0 || upgradesFound[stableTag.Name] >= retryCount {
+			continue
+		}
+
+		fromImageStream, _ := c.findImageStreamByAnnotations(map[string]string{releaseAnnotationReleaseTag: stableTag.Name})
+		if fromImageStream == nil {
+			glog.Errorf("Unable to find image repository for %s", stableTag.Name)
+			continue
+		}
+		if len(fromImageStream.Status.PublicDockerImageRepository) == 0 {
+			continue
+		}
+
+		stableVersion, _ := semverParseTolerant(stableTag.Name)
+		testName := fmt.Sprintf("%s-%s", prowJobName, namespaceSafeHash(releaseTag.Name, stableVersion.String())[:15])
+
+		upgradeTests[testName] = ReleaseAdditionalTest{
+			ReleaseVerification: ReleaseVerification{
+				Disabled: false,
+				Optional: true,
+				Upgrade:  true,
+				ProwJob:  &ProwJobVerification{Name: prowJobName},
+			},
+			UpgradeTag: stableTag.Name,
+			UpgradeRef: fromImageStream.Status.PublicDockerImageRepository,
+			Retry: &RetryPolicy{
+				RetryStrategy: RetryStrategyFirstSuccess,
+				RetryCount:    retryCount,
+			},
 		}
 	}
 	return upgradeTests, nil
