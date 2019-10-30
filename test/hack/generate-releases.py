@@ -32,14 +32,18 @@ class ReleaseGenerator(object):
         self.index = 0
         self.work_dir = tempfile.mkdtemp()
 
-    def _sanitize_release_payload(self, payload):
+    def _sanitize_release_payload(self, payload, stable):
         data = {}
 
         for k, v in payload.items():
             if k == 'prowJob':
                 data.update({k: {'name': DEFAULT_PROW_JOB_NAME}})
             elif isinstance(v, dict):
-                data.update({k: self._sanitize_release_payload(v)})
+                data.update({k: self._sanitize_release_payload(v, stable)})
+                if (not stable and "prowJob" in data[k] and "maxRetries" not in data[k] and 
+                    ("optional" not in data[k] or not data[k]["optional"]) and 
+                    ("upgrade" not in data[k] or not data[k]["upgrade"])):
+                        data[k]["maxRetries"] = 2
             else:
                 data.update({k: v})
 
@@ -70,7 +74,7 @@ class ReleaseGenerator(object):
                             for release_config_filename in os.listdir(RELEASE_CONFIGS_PATH):
                                 if release_config_filename.startswith('release-ocp-{}'.format(release_version)):
                                     with open(os.path.join(RELEASE_CONFIGS_PATH, release_config_filename), 'r') as release_config_file:
-                                        release_config = self._sanitize_release_payload(json.load(release_config_file))
+                                        release_config = self._sanitize_release_payload(json.load(release_config_file), False)
 
                                         if image_stream['metadata']['name'] == release_config['mirrorPrefix']:
                                             image_stream['metadata']['annotations'] = {
@@ -82,7 +86,7 @@ class ReleaseGenerator(object):
     def _generate_release_stream(self):
         logger.info('Generating "release" image stream: 4.y-stable')
         with open(os.path.join(RELEASE_CONFIGS_PATH, 'release-ocp-4.y-stable.json'), 'r') as release_config_file:
-            release_config = self._sanitize_release_payload(json.load(release_config_file))
+            release_config = self._sanitize_release_payload(json.load(release_config_file), True)
 
             release_stream = {
                 'kind': 'ImageStream',
