@@ -16,7 +16,7 @@ items:
         annotations: null
         from:
           kind: DockerImage
-          name: registry.svc.ci.openshift.org/ci/release-controller
+          name: quay.io/ankitathomas/release-controller
         generation: 1
         importPolicy:
           scheduled: true
@@ -177,4 +177,4 @@ items:
           - --prow-config=/etc/config/config.yaml
           - --job-config=/etc/job-config
           - --artifacts=openshift-test-release-artifacts.svc.ci.openshift.org
-          - -v=4
+          - -v=6

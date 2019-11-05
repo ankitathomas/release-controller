@@ -19,8 +19,8 @@ IMAGE_STREAM_NAME_PATTERN = re.compile(r'^images-ocp-(.+)\.yaml$')
 RELEASE_CONFIG_NAME_PATTERN = re.compile(r'^release-ocp-(\d\.\d)(-(.*))?\.json$')
 DEFAULT_PROW_JOB_NAME = 'release-controller-test-echo-job'
 
-RELEASE_IMAGES_PATH = 'release/ci-operator/infra/openshift/release-controller'
-RELEASE_CONFIGS_PATH = '{0}/releases'.format(RELEASE_IMAGES_PATH)
+RELEASE_IMAGES_PATH = 'release/core-services/release-controller'
+RELEASE_CONFIGS_PATH = '{0}/_releases'.format(RELEASE_IMAGES_PATH)
 
 
 class ReleaseGenerator(object):
