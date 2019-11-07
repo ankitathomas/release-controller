@@ -72,16 +72,6 @@ class ReleaseGenerator(object):
                             image_stream['metadata']['namespace'] = 'release-controller-test-release'
 
                             for release_config_filename in os.listdir(RELEASE_CONFIGS_PATH):
-                                match = RELEASE_CONFIG_NAME_PATTERN.search(release_config_filename)
-
-                                release_version = None
-
-                                if match is not None:
-                                    if match.group(1) is not None:
-                                        release_version = match.group(1)
-                                    else:
-                                        logger.error('Unable to properly parse filename: {}'.format(release_config_filename))
-                                        exit(1)
 
                                 if release_config_filename.startswith('release-ocp-{}'.format(release_version)):
                                     with open(os.path.join(RELEASE_CONFIGS_PATH, release_config_filename), 'r') as release_config_file:
