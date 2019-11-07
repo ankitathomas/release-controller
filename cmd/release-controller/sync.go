@@ -470,10 +470,6 @@ func (c *Controller) syncReady(release *Release) error {
 		if err != nil {
 			return err
 		}
-for k,v := range status {
-fmt.Printf("%s: %+v\n", k, v)
-}
-fmt.Printf("%s: %s\n",releaseTag.Name, toJSONString(status))
 		if names, ok := status.Incomplete(release.Config.Verify); ok {
 			glog.V(4).Infof("Verification jobs for %s are still running: %s", releaseTag.Name, strings.Join(names, ", "))
 			if err := c.markReleaseReady(release, map[string]string{releaseAnnotationVerify: toJSONString(status)}, releaseTag.Name); err != nil {
