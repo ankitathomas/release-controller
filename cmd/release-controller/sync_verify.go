@@ -36,10 +36,12 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				jobRetries = status.Retries
 				switch status.State {
 				case releaseVerificationStateSucceeded:
+					glog.V(6).Infof("%s: Release verification step %s succeeded. skip", releaseTag.Name, name)
 					continue
 				case releaseVerificationStateFailed:
 					jobRetries++
 					if verifyType.Optional || jobRetries > verifyType.MaxRetries {
+						glog.V(6).Infof("%s: Release verification step %s failed %d times, job optional or exceeded retry limit. skip", releaseTag.Name, name)
 						continue
 					}
 					// find the next time, if ok run.
@@ -63,6 +65,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					glog.V(2).Infof("Unrecognized verification status %q for type %s on release %s", status.State, name, releaseTag.Name)
 				}
 			}
+			glog.V(6).Infof("%s: Release verification step %s (run %d)", releaseTag.Name, name, jobRetries)
 
 			// if this is an upgrade job, find the appropriate source for the upgrade job
 			var previousTag, previousReleasePullSpec string
