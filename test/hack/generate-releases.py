@@ -83,7 +83,7 @@ class ReleaseGenerator(object):
                                         logger.error('Unable to properly parse filename: {}'.format(release_config_filename))
                                         exit(1)
 
-                                if release_version is not None and release_version == stream_version:
+                                if release_config_filename.startswith('release-ocp-{}'.format(release_version)):
                                     with open(os.path.join(RELEASE_CONFIGS_PATH, release_config_filename), 'r') as release_config_file:
                                         release_config = self._sanitize_release_payload(json.load(release_config_file), False)
 
