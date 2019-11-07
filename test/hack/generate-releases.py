@@ -15,8 +15,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('generateReleases')
 logger.setLevel(logging.INFO)
 
-IMAGE_STREAM_NAME_PATTERN = re.compile(r'^images-ocp-(.+)\.yaml$')
-RELEASE_CONFIG_NAME_PATTERN = re.compile(r'^release-ocp-(\d\.\d)(-(.*))?\.json$')
+RELEASE_NAME_PATTERN = re.compile(r'^images-ocp-(.+)\.yaml$')
 DEFAULT_PROW_JOB_NAME = 'release-controller-test-echo-job'
 
 RELEASE_IMAGES_PATH = 'release/core-services/release-controller'
@@ -58,13 +57,13 @@ class ReleaseGenerator(object):
 
     def _process_image_streams(self):
         for filename in os.listdir(RELEASE_IMAGES_PATH):
-            match = IMAGE_STREAM_NAME_PATTERN.search(filename)
+            match = RELEASE_NAME_PATTERN.search(filename)
 
             if match is not None:
-                stream_version = match.group(1)
+                release_version = match.group(1)
 
-                if len(self.versions) == 0 or stream_version in self.versions:
-                    logger.info('Generating image streams for version: {}'.format(stream_version))
+                if len(self.versions) == 0 or release_version in self.versions:
+                    logger.info('Generating image streams for version: {}'.format(release_version))
 
                     with open(os.path.join(RELEASE_IMAGES_PATH, filename), 'r') as release_images:
                         image_streams = yaml.safe_load_all(release_images)
