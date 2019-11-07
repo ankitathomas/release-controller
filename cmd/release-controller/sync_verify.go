@@ -46,8 +46,13 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 					// find the next time, if ok run.
 					if status.TransitionTime != nil {
 						backoffDuration := time.Minute*0
+						backoffCap := time.Minute*15
+						backoffStep := time.Minute * 2
 						if jobRetries != 1 {
-							backoffDuration = time.Minute * 5 * (1<<uint(jobRetries - 1))
+							backoffDuration = backoffStep * (1<<uint(jobRetries - 1))
+							if backoffDuration > backoffCap {
+								backoffDuration = backoffCap
+							}
 						}
 						backoffTime := status.TransitionTime.Add(backoffDuration)
 						currentTime := time.Now()
