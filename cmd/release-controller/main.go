@@ -113,6 +113,7 @@ func main() {
 }
 
 func (o *options) Run() error {
+	fmt.Println("START RELEASE CONTROLLER")
 	if len(o.ReleaseNamespaces) == 0 {
 		return fmt.Errorf("no namespace set, use --release-namespace")
 	}

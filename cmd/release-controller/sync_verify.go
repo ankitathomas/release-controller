@@ -53,6 +53,8 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 						if (currentTime.Before(backoffTime)) {
 							glog.V(6).Infof("%s: Release verification step %s failed %d times, time: %v, backoff till: %v, (%d)", releaseTag.Name, name, jobRetries, currentTime, backoffTime, backoffDuration)
 							continue
+						} else {
+							glog.V(6).Infof("%s: Release verification step %s failed %d times, time: %v, retrying", releaseTag.Name, name, jobRetries, currentTime, backoffTime, backoffDuration)
 						}
 					}
 				case releaseVerificationStatePending:
