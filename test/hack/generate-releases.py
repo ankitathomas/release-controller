@@ -40,13 +40,12 @@ class ReleaseGenerator(object):
                 data.update({k: {'name': DEFAULT_PROW_JOB_NAME}})
             elif isinstance(v, dict):
                 data.update({k: self._sanitize_release_payload(v, stable)})
-                if (not stable and "prowJob" in data[k] and "maxRetries" not in data[k] and 
+                if ("prowJob" in data[k] and "maxRetries" not in data[k] and 
                     ("optional" not in data[k] or not data[k]["optional"]) and 
                     ("upgrade" not in data[k] or not data[k]["upgrade"])):
                         data[k]["maxRetries"] = 2
             else:
                 data.update({k: v})
-
         return data
 
     def _write_image_stream_file(self, content):

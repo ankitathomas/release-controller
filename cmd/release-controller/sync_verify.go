@@ -41,7 +41,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 				case releaseVerificationStateFailed:
 					jobRetries++
 					if verifyType.Optional || jobRetries > verifyType.MaxRetries {
-						glog.V(6).Infof("%s: Release verification step %s failed %d times, job optional or exceeded retry limit. skip", releaseTag.Name, name)
+						glog.V(6).Infof("%s: Release verification step %s failed %d/%d times, job optional or exceeded retry limit. skip", releaseTag.Name, name, jobRetries, verifyType.MaxRetries)
 						continue
 					}
 					// find the next time, if ok run.

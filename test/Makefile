@@ -32,3 +32,6 @@ all-releases:
 	./hack/generate-releases.py -a -v 4.3
 .PHONY: 4.3
 
+apply:
+	sh ./apply.sh
+.PHONY: apply
