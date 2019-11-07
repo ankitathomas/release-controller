@@ -133,7 +133,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			}
 			status.Retries = jobRetries
 			verifyStatus[name] = status
-
+fmt.Printf("UPDATE STATUS: %s: %+v\n", name, status)
 		default:
 			// manual verification
 		}
