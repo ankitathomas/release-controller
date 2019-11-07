@@ -52,7 +52,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 						backoffTime := status.TransitionTime.Add(backoffDuration)
 						currentTime := time.Now()
 						if (currentTime.Before(backoffTime)) {
-							glog.V(6).Infof("%s: Release verification step %s failed %d times, time: %v, backoff till: %v, (%d)", releaseTag.Name, name, jobRetries, currentTime, backoffTime, backoffDuration)
+							glog.V(6).Infof("%s: Release verification step %s failed %d times, backoff till: %v", releaseTag.Name, name, jobRetries, backoffTime)
 							continue
 						}
 					}
