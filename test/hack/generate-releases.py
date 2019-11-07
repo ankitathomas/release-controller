@@ -94,7 +94,6 @@ class ReleaseGenerator(object):
                                             }
 
                                             self._write_image_stream_file(image_stream)
-                                            break
 
     def _generate_release_stream(self):
         logger.info('Generating "release" image stream: 4.y-stable')
