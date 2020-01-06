@@ -202,9 +202,8 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 		return releaseCandidates, err
 	}
 	for _, r := range stable.Releases {
-		releaseSource := fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name)
 		for _, tag := range r.Release.Source.Spec.Tags {
-			if len(tag.Annotations) == 0 || tag.Annotations[releaseAnnotationSource] != releaseSource {
+			if tag.Annotations[releaseAnnotationSource] != fmt.Sprintf("%s/%s", r.Release.Source.Namespace, r.Release.Source.Name) {
 				continue
 			}
 			// Only consider stable versions with a parseable version
@@ -239,7 +238,10 @@ func (c *Controller) findReleaseCandidates(upgradeSuccessPercent float64, releas
 			if tag.Annotations == nil {
 				continue
 			}
-			if tag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted || len(tag.Annotations[releaseAnnotationCreationTimestamp]) == 0 {
+			if tag.Annotations[releaseAnnotationPhase] != releasePhaseAccepted {
+				continue
+			}
+			if len(tag.Annotations[releaseAnnotationCreationTimestamp]) == 0 {
 				continue
 			}
 			t, _ := time.Parse(time.RFC3339, tag.Annotations[releaseAnnotationCreationTimestamp])

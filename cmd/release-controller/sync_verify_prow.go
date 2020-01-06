@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha512"
-	"encoding/base32"
 	"fmt"
 	"strings"
 
@@ -197,7 +195,6 @@ func objectToUnstructured(obj runtime.Object) *unstructured.Unstructured {
 }
 
 func addReleaseEnvToProwJobSpec(spec *prowjobv1.ProwJobSpec, release *Release, mirror *imagev1.ImageStream, releaseTag *imagev1.TagReference, previousReleasePullSpec, previousTag string) (bool, error) {
-// Generate the annotations, labels and container env for a prowjob
 	if spec.PodSpec == nil {
 		// Jenkins jobs cannot be parameterized
 		return true, nil
@@ -245,23 +242,4 @@ func hasProwJob(config *prowconfig.Config, name string) (*prowconfig.Periodic, b
 		}
 	}
 	return nil, false
-}
-
-// oneWayEncoding can be used to encode hex to a 62-character set (0 and 1 are duplicates) for use in
-// short display names that are safe for use in kubernetes as resource names.
-var oneWayNameEncoding = base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding)
-
-func namespaceSafeHash(values ...string) string {
-	hash := sha512.New()
-
-	// the inputs form a part of the hash
-	for _, s := range values {
-		hash.Write([]byte(s))
-	}
-
-	// Object names can't be too long so we truncate
-	// the hash. This increases chances of collision
-	// but we can tolerate it as our input space is
-	// tiny.
-	return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:])
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -168,8 +170,8 @@ type additionalTestInstance struct {
 	jobNo int
 }
 
-func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, ValidationStatusMap, error) {
-	verifyStatus := make(ValidationStatusMap)
+func (c *Controller) ensureAdditionalTests(release *Release, releaseTag *imagev1.TagReference) (map[string]ReleaseAdditionalTest, VerificationStatusList, error) {
+	verifyStatus := make(VerificationStatusList)
 	if data := releaseTag.Annotations[releaseAnnotationAdditionalTests]; len(data) > 0 {
 		if err := json.Unmarshal([]byte(data), &verifyStatus); err != nil {
 			glog.Errorf("Release %s has invalid verification status, ignoring: %v", releaseTag.Name, err)
@@ -441,4 +443,23 @@ func (c *Controller) upgradeJobs(release *Release, releaseTag *imagev1.TagRefere
 		}
 	}
 	return upgradeTests, nil
+}
+
+// oneWayEncoding can be used to encode hex to a 62-character set (0 and 1 are duplicates) for use in
+// short display names that are safe for use in kubernetes as resource names.
+var oneWayNameEncoding = base32.NewEncoding("bcdfghijklmnpqrstvwxyz0123456789").WithPadding(base32.NoPadding)
+
+func namespaceSafeHash(values ...string) string {
+	hash := sha512.New()
+
+	// the inputs form a part of the hash
+	for _, s := range values {
+		hash.Write([]byte(s))
+	}
+
+	// Object names can't be too long so we truncate
+	// the hash. This increases chances of collision
+	// but we can tolerate it as our input space is
+	// tiny.
+	return oneWayNameEncoding.EncodeToString(hash.Sum(nil)[:])
 }
