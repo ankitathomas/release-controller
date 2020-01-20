@@ -266,20 +266,48 @@ func links(tag imagev1.TagReference, release *Release) string {
 	if err := json.Unmarshal([]byte(links), &status); err != nil {
 		return "error"
 	}
-	keys := make([]string, 0, len(release.Config.Verify))
+	type linkStatus struct {
+		key string
+		status *VerifyJobStatus
+	}
+	keys := make([]linkStatus, 0, len(release.Config.Verify) + len(release.Config.CandidateTests))
 	for k, v := range release.Config.Verify {
 		if v.Upgrade {
 			continue
 		}
-		keys = append(keys, k)
+		if s, ok := status[k]; ok {
+			keys = append(keys, linkStatus{k, &s.VerifyJobStatus})
+			continue
+		}
+		keys = append(keys, linkStatus{k, nil})
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].key < keys[j].key
+	})
+	var candidateStatus VerificationStatusList
+	if err := json.Unmarshal([]byte(tag.Annotations[releaseAnnotationCandidateTests]), &candidateStatus); err == nil {
+		candidateKeys := make([]linkStatus, 0, len(release.Config.CandidateTests))
+		for k, v := range release.Config.CandidateTests {
+			if v.Upgrade {
+				continue
+			}
+			if s, ok := candidateStatus[k]; ok && len(s.Status) > 0 {
+				candidateKeys = append(candidateKeys, linkStatus{k, s.Status[len(s.Status) - 1]})
+				continue
+			}
+			candidateKeys = append(candidateKeys, linkStatus{k, nil})
+		}
+		sort.Slice(candidateKeys, func(i, j int) bool {
+			return candidateKeys[i].key < candidateKeys[j].key
+		})
+		keys = append(keys, candidateKeys...)
+	}
 
 	buf := &bytes.Buffer{}
-	for _, key := range keys {
-		if s, ok := status[key]; ok {
-			if len(s.URL) > 0 {
-				switch s.State {
+	for _, s := range keys {
+		if s.status != nil {
+			if len(s.status.URL) > 0 {
+				switch s.status.State {
 				case releaseVerificationStateFailed:
 					buf.WriteString(" <a title=\"Failed\" class=\"text-danger\" href=\"")
 				case releaseVerificationStateSucceeded:
@@ -287,13 +315,13 @@ func links(tag imagev1.TagReference, release *Release) string {
 				default:
 					buf.WriteString(" <a title=\"Pending\" class=\"\" href=\"")
 				}
-				buf.WriteString(template.HTMLEscapeString(s.URL))
+				buf.WriteString(template.HTMLEscapeString(s.status.URL))
 				buf.WriteString("\">")
-				buf.WriteString(template.HTMLEscapeString(key))
+				buf.WriteString(template.HTMLEscapeString(s.key))
 				buf.WriteString("</a>")
 				continue
 			}
-			switch s.State {
+			switch s.status.State {
 			case releaseVerificationStateFailed:
 				buf.WriteString(" <span title=\"Failed\" class=\"text-danger\">")
 			case releaseVerificationStateSucceeded:
@@ -301,14 +329,14 @@ func links(tag imagev1.TagReference, release *Release) string {
 			default:
 				buf.WriteString(" <span title=\"Pending\" class=\"\">")
 			}
-			buf.WriteString(template.HTMLEscapeString(key))
+			buf.WriteString(template.HTMLEscapeString(s.key))
 			buf.WriteString("</span>")
 			continue
 		}
 		final := tag.Annotations[releaseAnnotationPhase] == releasePhaseRejected || tag.Annotations[releaseAnnotationPhase] == releasePhaseAccepted
-		if !release.Config.Verify[key].Disabled && !final {
+		if !release.Config.Verify[s.key].Disabled && !final {
 			buf.WriteString(" <span title=\"Pending\">")
-			buf.WriteString(template.HTMLEscapeString(key))
+			buf.WriteString(template.HTMLEscapeString(s.key))
 			buf.WriteString("</span>")
 		}
 	}
@@ -402,6 +430,107 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 		fmt.Fprintf(w, `<p>Tests:</p><ul>%s</ul>`, out)
 	} else {
 		fmt.Fprintf(w, `<p><em>No tests for this release</em>`)
+	}
+}
+
+func renderCandidateLinks(w io.Writer, tag imagev1.TagReference, release *Release){
+	if _, ok := tag.Annotations[releaseAnnotationKeep]; !ok {
+		return
+	}
+	links := tag.Annotations[releaseAnnotationCandidateTests]
+	if len(links) == 0 {
+		fmt.Fprintf(w, `<p><em>No candidate tests for this release</em>`)
+		return
+	}
+	var status VerificationStatusList
+	if err := json.Unmarshal([]byte(links), &status); err != nil {
+		fmt.Fprintf(w, `<p><em class="text-danger">Unable to load candidate test info</em>`)
+		return
+	}
+	keys := make([]string, 0, len(release.Config.CandidateTests))
+	for k := range release.Config.CandidateTests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	buf := &bytes.Buffer{}
+	for _, key := range keys {
+		if s, ok := status[key]; ok {
+			states := map[string]string{releaseVerificationStateSucceeded:"Success", releaseVerificationStateFailed:"Failed", releaseVerificationStatePending:"Pending"}
+			if len(s.Status) > 2 {
+				states = map[string]string{releaseVerificationStateSucceeded:"S", releaseVerificationStateFailed:"F", releaseVerificationStatePending:"P"}
+			}
+			switch release.Config.CandidateTests[key].state(s.Status...) {
+			case releaseVerificationStateFailed:
+				buf.WriteString("<li><span class=\"text-danger\">"+template.HTMLEscapeString(key)+" -")
+			case releaseVerificationStateSucceeded:
+				buf.WriteString("<li><span class=\"text-success\">"+template.HTMLEscapeString(key)+" -")
+			default:
+				buf.WriteString("<li><span class=\"\">"+template.HTMLEscapeString(key)+" -")
+			}
+			for _, status := range s.Status {
+				if len(status.URL) > 0 {
+					buf.WriteString(" <a href=\"" + template.HTMLEscapeString(status.URL) + "\" ")
+				} else {
+					buf.WriteString(" <span ")
+				}
+				switch status.State {
+				case releaseVerificationStateFailed:
+					buf.WriteString("class=\"text-danger\">"+states[status.State]+"</a>")
+				case releaseVerificationStateSucceeded:
+					buf.WriteString("class=\"text-success\">"+states[status.State]+"</a>")
+				case releaseVerificationStatePending:
+					buf.WriteString("class=\"text-warning\">"+states[status.State]+"</a>")
+				}
+				if len(status.URL) > 0 {
+					buf.WriteString("</a>")
+				} else {
+					buf.WriteString("</span>")
+				}
+			}
+			if pj := release.Config.CandidateTests[key].ProwJob; pj != nil {
+				buf.WriteString(" ")
+				buf.WriteString(pj.Name)
+			}
+		} else {
+			testKeys := make([]string, 0)
+			for test := range status {
+				if !strings.HasPrefix(test, key+"-") {
+					continue
+				}
+				testKeys = append(testKeys, test)
+			}
+			if len(testKeys) == 0 {
+				continue
+			}
+			sort.Strings(testKeys)
+			states := map[string]string{releaseVerificationStateSucceeded:"Success", releaseVerificationStateFailed:"Failed", releaseVerificationStatePending:"Pending"}
+			if len(testKeys) > 2 {
+				states = map[string]string{releaseVerificationStateSucceeded:"S", releaseVerificationStateFailed:"F", releaseVerificationStatePending:"P"}
+			}
+			buf.WriteString("<li><span>"+template.HTMLEscapeString(key)+" -")
+			for _, test := range testKeys {
+				target := template.HTMLEscapeString(test[len(key)+1:])
+				switch state := release.Config.CandidateTests[key].state(status[test].Status...); {
+				case state == releaseVerificationStateFailed:
+					buf.WriteString(" <a class=\"text-danger\" href=\"#"+target+"\" title=\""+target+"\">"+states[state]+"</a>")
+				case state == releaseVerificationStateSucceeded:
+					buf.WriteString(" <a class=\"text-success\" href=\"#"+target+"\" title=\""+target+"\">"+states[state]+"</a>")
+				case state == releaseVerificationStatePending:
+					buf.WriteString(" <a class=\"text-warning\" href=\"#"+target+"\" title=\""+target+"\">"+states[state]+"</a>")
+				}
+
+			}
+			buf.WriteString("</span>")
+			if pj := release.Config.CandidateTests[key].ProwJob; pj != nil {
+				buf.WriteString(" ")
+				buf.WriteString(pj.Name)
+			}
+		}
+	}
+	if out := buf.String(); len(out) > 0 {
+		fmt.Fprintf(w, `<p>Candidate Tests:</p><ul>%s</ul>`, out)
+	} else {
+		fmt.Fprintf(w, `<p><em>No candidate tests for this release</em>`)
 	}
 }
 

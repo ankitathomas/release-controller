@@ -577,7 +577,7 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 	}
 	testTags = testTags[:testTagLen]
 	if glog.V(4) && len(testTags) > 0 {
-		glog.Infof("release=%s CandidateTesting=%v", release.Config.Name, tagNames(testTags))
+		glog.Infof("syncCandidateTesting release=%s CandidateTesting=%v", release.Config.Name, tagNames(testTags))
 	}
 	for _, tag := range testTags {
 		candidateTests, status, err := c.ensureCandidateTests(release, tag)
@@ -594,7 +594,7 @@ func (c *Controller) syncCandidateTesting(release *Release) error {
 			continue
 		}
 
-		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate:""}, tag.Name); err != nil {
+		if err := c.setReleaseAnnotation(release, tag.Annotations[releaseAnnotationPhase], map[string]string{releaseAnnotationCandidateTests: toJSONString(status), releaseAnnotationCandidate:"ok"}, tag.Name); err != nil {
 			return err
 		}
 	}
