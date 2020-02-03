@@ -45,5 +45,5 @@ fail:
 .PHONY: fail
 
 keep:
-	./keep
+	./keep.sh
 .PHONY: keep
