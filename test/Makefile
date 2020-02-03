@@ -35,3 +35,15 @@ all-releases:
 apply:
 	sh ./apply.sh
 .PHONY: apply
+
+pass:
+	./complete.sh "T"
+.PHONY: pass
+
+fail:
+	./complete.sh "F"
+.PHONY: fail
+
+keep:
+	./keep
+.PHONY: keep
