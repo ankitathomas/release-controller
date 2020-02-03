@@ -10,6 +10,8 @@ import re
 import shutil
 import tempfile
 import yaml
+import openshift as oc
+import json
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('generateReleases')
@@ -83,7 +85,20 @@ class ReleaseGenerator(object):
                                             self._write_image_stream_file(image_stream)
 
     def _generate_release_stream(self):
-        logger.info('Generating "release" image stream: 4.y-stable')
+        stableis = "release"
+        logger.info('Generating "{}" image stream: 4.y-stable'.format(stableis))
+
+        tags = []
+        with oc.project("ocp"):
+            release = oc.selector("is/{}".format(stableis)).object().model
+            config = json.loads(release.metadata.annotations["release.openshift.io/config"])
+            if config["as"] == "Stable" and release.spec.tags is not oc.Missing:
+                for tag in release.spec.tags:
+                    if tag.annotations != None and tag.annotations["release.openshift.io/name"] == config["name"]:
+                        t = tag.copy()
+                        t["annotations"]["release.openshift.io/source"] = "release-controller-test-release/{}".format(stableis)
+                        tags.append(t)
+
         with open(os.path.join(RELEASE_CONFIGS_PATH, 'release-ocp-4.y-stable.json'), 'r') as release_config_file:
             release_config = self._sanitize_release_payload(json.load(release_config_file), True)
 
@@ -96,6 +111,9 @@ class ReleaseGenerator(object):
                     'annotations': {
                         'release.openshift.io/config': json.dumps(release_config)
                     }
+                },
+                'spec': {
+                    'tags': json.loads(json.dumps(tags))
                 }
             }
 
