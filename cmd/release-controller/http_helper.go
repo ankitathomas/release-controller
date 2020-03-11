@@ -399,53 +399,79 @@ func renderVerifyLinks(w io.Writer, tag imagev1.TagReference, release *Release) 
 	for _, key := range keys {
 		if s, ok := status[key]; ok {
 			if len(s.URL) > 0 {
+				buf.WriteString("<li><a href=\"" + template.HTMLEscapeString(s.URL) + "\"")
+			} else {
+				buf.WriteString("<li><span")
+			}
+			if len(s.History) > 1 {
 				switch s.State {
 				case releaseVerificationStateFailed:
-					buf.WriteString("<li><a class=\"text-danger\" href=\"")
+					buf.WriteString(" class=\"text-danger\">" + template.HTMLEscapeString(key) + " F")
 				case releaseVerificationStateSucceeded:
-					buf.WriteString("<li><a class=\"text-success\" href=\"")
-				default:
-					buf.WriteString("<li><a class=\"\" href=\"")
+					buf.WriteString(" class=\"text-success\">" + template.HTMLEscapeString(key) + " S")
+				case releaseVerificationStatePending:
+					buf.WriteString(" class=\"\">" + template.HTMLEscapeString(key) + " P")
 				}
-				buf.WriteString(template.HTMLEscapeString(s.URL))
-				buf.WriteString("\">")
-				buf.WriteString(template.HTMLEscapeString(key))
+			} else {
 				switch s.State {
 				case releaseVerificationStateFailed:
-					buf.WriteString(" Failed")
+					buf.WriteString(" class=\"text-danger\">" + template.HTMLEscapeString(key) + " Failed")
 				case releaseVerificationStateSucceeded:
-					buf.WriteString(" Succeeded")
-				default:
-					buf.WriteString(" Pending")
+					buf.WriteString(" class=\"text-success\">" + template.HTMLEscapeString(key) + " Succeeded")
+				case releaseVerificationStatePending:
+					buf.WriteString(" class=\"\">" + template.HTMLEscapeString(key) + " Pending")
 				}
+			}
+			if len(s.URL) > 0 {
 				buf.WriteString("</a>")
-				if s.Retries > 0 {
-					buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", s.Retries))
+			} else {
+				buf.WriteString("</span>")
+			}
+			if s.Retries > 0 && len(s.History) == 0 {
+				buf.WriteString(fmt.Sprintf(" <span class=\"text-warning\">(%d retries)</span>", s.Retries))
+			} else if len(s.History) > 1 {
+				for i := len(s.History) - 1; i >= 0; i-- {
+					if len(s.History[i].URL) > 0 {
+						buf.WriteString("<a href=\"" + template.HTMLEscapeString(s.History[i].URL) + "\"")
+					} else {
+						buf.WriteString("<span")
+					}
+					switch s.History[i].State {
+					case releaseVerificationStateFailed:
+						buf.WriteString(" class=\"text-danger\"> F")
+					case releaseVerificationStateSucceeded:
+						buf.WriteString(" class=\"text-success\"> S")
+					case releaseVerificationStatePending:
+						buf.WriteString(" class=\"\"> P")
+					}
+					if len(s.History[i].URL) > 0 {
+						buf.WriteString("</a>")
+					} else {
+						buf.WriteString("</span>")
+					}
 				}
-				if pj := release.Config.Verify[key].ProwJob; pj != nil {
-					buf.WriteString(" ")
-					buf.WriteString(pj.Name)
+			} else {
+				for i := len(s.History) - 1; i >= 0; i-- {
+					if len(s.History[i].URL) > 0 {
+						buf.WriteString("<a href=\"" + template.HTMLEscapeString(s.History[i].URL) + "\"")
+					} else {
+						buf.WriteString("<span")
+					}
+					switch s.History[i].State {
+					case releaseVerificationStateFailed:
+						buf.WriteString(" class=\"text-danger\"> Failed")
+					case releaseVerificationStateSucceeded:
+						buf.WriteString(" class=\"text-success\"> Success")
+					case releaseVerificationStatePending:
+						buf.WriteString(" class=\"\"> Pending")
+					}
+					if len(s.History[i].URL) > 0 {
+						buf.WriteString("</a>")
+					} else {
+						buf.WriteString("</span>")
+					}
 				}
-				continue
 			}
-			switch s.State {
-			case releaseVerificationStateFailed:
-				buf.WriteString("<li><span class=\"text-danger\">")
-			case releaseVerificationStateSucceeded:
-				buf.WriteString("<li><span class=\"text-success\">")
-			default:
-				buf.WriteString("<li><span class=\"\">")
-			}
-			buf.WriteString(template.HTMLEscapeString(key))
-			switch s.State {
-			case releaseVerificationStateFailed:
-				buf.WriteString(" Failed")
-			case releaseVerificationStateSucceeded:
-				buf.WriteString(" Succeeded")
-			default:
-				buf.WriteString(" Pending")
-			}
-			buf.WriteString("</span>")
 			if pj := release.Config.Verify[key].ProwJob; pj != nil {
 				buf.WriteString(" ")
 				buf.WriteString(pj.Name)

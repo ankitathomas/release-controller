@@ -56,6 +56,10 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 							continue
 						}
 					}
+					// Write previous run status into history before creating a new job
+					if len(status.History) == 0 || status.History[len(status.History)-1].URL != status.URL {
+						verifyStatus[name].History = append(verifyStatus[name].History, verifyStatus[name].VerifyJobStatus)
+					}
 				case releaseVerificationStatePending:
 					// we need to process this
 				default:
@@ -121,6 +125,7 @@ func (c *Controller) ensureVerificationJobs(release *Release, releaseTag *imagev
 			if err != nil {
 				return nil, err
 			}
+
 			status, ok := prowJobVerificationStatus(job)
 			if !ok {
 				return nil, fmt.Errorf("unexpected error accessing prow job definition")
