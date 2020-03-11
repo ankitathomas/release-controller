@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/blang/semver"
+	"github.com/google/go-cmp/cmp"
 	imagev1 "github.com/openshift/api/image/v1"
-	"k8s.io/apimachinery/pkg/util/diff"
 )
 
 func Test_calculateReleaseUpgrades(t *testing.T) {
@@ -195,8 +195,8 @@ func Test_calculateReleaseUpgrades(t *testing.T) {
 					Config: &ReleaseConfig{},
 				}
 			}
-			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph()); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("%s", diff.ObjectReflectDiff(tt.want, got))
+			if got := calculateReleaseUpgrades(tt.release, tt.tags, tt.graph(), true); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("%s", cmp.Diff(tt.want, got))
 			}
 		})
 	}

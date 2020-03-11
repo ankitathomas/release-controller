@@ -34,7 +34,7 @@ func NewGCSAuditStore(bucket string, prefix, userAgent, serviceAccountPath strin
 		options = append(options, option.WithUserAgent(userAgent))
 	}
 	if len(serviceAccountPath) > 0 {
-		options = append(options, option.WithServiceAccountFile(serviceAccountPath))
+		options = append(options, option.WithCredentialsFile(serviceAccountPath))
 	}
 	client, err := storage.NewClient(
 		context.Background(),
@@ -128,7 +128,7 @@ func (b *GCSAuditStore) PutSignature(ctx context.Context, dgst string, signature
 		objectPath = path.Join("signatures", "openshift", "release", fmt.Sprintf("%s=%s", parts[0], parts[1]), fmt.Sprintf("signature-%d", index))
 	}
 	glog.V(4).Infof("Writing signature to gs://%s/%s", b.bucketName, objectPath)
-	obj := b.bucket.Object(objectPath).If(storage.Conditions{GenerationMatch:0})
+	obj := b.bucket.Object(objectPath).If(storage.Conditions{GenerationMatch: 0})
 
 	w := obj.NewWriter(ctx)
 	if _, err := w.Write(signature); err != nil {
